@@ -346,6 +346,23 @@ func TestBrokerSessionsAreRecordedAtomicallyWithRevocation(t *testing.T) {
 	if repeated, err := restarted.PendingDisconnects(ctx, 100); err != nil || len(repeated) != len(batch) {
 		t.Fatal("disconnect retry lost across restart", err)
 	}
+	// An older batch becoming retryable must not starve sessions that have
+	// never been attempted, even when the polling interval equals the lease.
+	if _, err = s.db.Exec(`UPDATE uem_agent_broker_sessions SET attempted_at=clock_timestamp()-INTERVAL '6 seconds'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec(`INSERT INTO uem_agent_broker_sessions(server_id,client_id,device_id,expires_at,disconnect_at) SELECT $1,n,$2,clock_timestamp()+INTERVAL '1 minute',clock_timestamp() FROM generate_series(100,139) n`, serverID, response.DeviceID); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := restarted.PendingDisconnects(ctx, 32)
+	if err != nil || len(fresh) != 32 {
+		t.Fatal("disconnect batch was not bounded", err)
+	}
+	for _, session := range fresh {
+		if session.ClientID < 100 {
+			t.Fatal("retryable sessions starved unattempted disconnects")
+		}
+	}
 	if _, err = s.db.Exec(`UPDATE uem_agent_broker_sessions SET expires_at=clock_timestamp()-INTERVAL '1 second'`); err != nil {
 		t.Fatal(err)
 	}

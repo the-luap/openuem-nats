@@ -105,7 +105,7 @@ func (s *AccessStore) PendingDisconnects(ctx context.Context, limit int) ([]enro
 	if limit < 1 || limit > 1000 {
 		return nil, ErrInvalid
 	}
-	rows, err := s.db.QueryContext(ctx, `WITH due AS (SELECT server_id,client_id FROM uem_agent_broker_sessions WHERE disconnect_at IS NOT NULL AND expires_at>clock_timestamp() AND (attempted_at IS NULL OR attempted_at<clock_timestamp()-INTERVAL '5 seconds') ORDER BY disconnect_at,server_id,client_id LIMIT $1 FOR UPDATE SKIP LOCKED) UPDATE uem_agent_broker_sessions s SET attempted_at=clock_timestamp() FROM due WHERE s.server_id=due.server_id AND s.client_id=due.client_id RETURNING s.server_id,s.client_id,s.expires_at`, limit)
+	rows, err := s.db.QueryContext(ctx, `WITH due AS (SELECT server_id,client_id FROM uem_agent_broker_sessions WHERE disconnect_at IS NOT NULL AND expires_at>clock_timestamp() AND (attempted_at IS NULL OR attempted_at<clock_timestamp()-INTERVAL '5 seconds') ORDER BY attempted_at NULLS FIRST,disconnect_at,server_id,client_id LIMIT $1 FOR UPDATE SKIP LOCKED) UPDATE uem_agent_broker_sessions s SET attempted_at=clock_timestamp() FROM due WHERE s.server_id=due.server_id AND s.client_id=due.client_id RETURNING s.server_id,s.client_id,s.expires_at`, limit)
 	if err != nil {
 		return nil, err
 	}

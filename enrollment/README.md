@@ -69,3 +69,13 @@ Unit tests also verify connection binding, nonce replay rejection and redacted
 denials. The [durable registry](registry/README.md) now implements the PostgreSQL
 identity/session callback and disconnect outbox, with a combined real-broker test.
 It is not yet wired into production services or the released agent.
+
+`StartAgentAuthorizationService` provides the protected queue subscriber with at
+most 32 simultaneous lookups, bounded pending messages and cancellation on close.
+`DisconnectRevokedSessions` consumes at most 32 persisted sessions per pass and
+uses at most eight parallel one-second requests on the separate system connection.
+It validates the responding server and handles the already-disconnected response
+without discarding retry work. Unattempted sessions take priority over retries so
+an older failing batch cannot starve later revocations. Tests exercise the actual
+service wrapper against NATS and its lookup/shutdown bounds. Executable service
+configuration and deployment wiring remain separate integration work.

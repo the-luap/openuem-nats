@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -76,23 +75,11 @@ func TestBrokerCalloutRejectsUnknownRevokedKeysAndDisconnectsExistingSessions(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = auth.Subscribe(enrollment.AuthorizationSubject, func(message *nats.Msg) {
-		response, err := authorizer.Authorize(context.Background(), message.Data)
-		if err != nil {
-			t.Errorf("invalid broker authorization request: %v", err)
-			_ = message.Respond(nil)
-			return
-		}
-		if err := message.Respond(response); err != nil {
-			t.Errorf("broker authorization response failed: %v", err)
-		}
-	})
+	service, err := StartAgentAuthorizationService(context.Background(), auth, authorizer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = auth.FlushTimeout(time.Second); err != nil {
-		t.Fatal(err)
-	}
+	defer service.Close()
 	disconnected := make(chan struct{}, 8)
 	config := AgentConnection{Endpoint: s.WebsocketURL() + "/agent-channel", DeviceID: deviceID, BrokerKey: deviceKey, Roots: roots, Event: func(state string) {
 		if state == "disconnected" {
@@ -127,8 +114,8 @@ func TestBrokerCalloutRejectsUnknownRevokedKeysAndDisconnectsExistingSessions(t 
 		t.Fatal(err)
 	}
 	defer system.Close()
-	body, _ := json.Marshal(server.KickClientReq{CID: session.ClientID})
-	if _, err = system.Request("$SYS.REQ.SERVER."+session.ServerID+".KICK", body, time.Second); err != nil {
+	disconnectStore := &testDisconnectStore{sessions: []enrollment.BrokerSession{session}}
+	if err = DisconnectRevokedSessions(context.Background(), system, disconnectStore); err != nil || !disconnectStore.cleaned {
 		t.Fatal("revoked session disconnect failed", err)
 	}
 	select {
@@ -167,9 +154,25 @@ func TestBrokerCalloutRejectsUnknownRevokedKeysAndDisconnectsExistingSessions(t 
 		t.Fatal("expired enrollment reconnected")
 	}
 	certificateExpiry.Store(time.Now().Add(time.Hour).Unix())
-	auth.Close()
+	if err = service.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if c, err := ConnectAgent(config); err == nil {
 		c.Close()
 		t.Fatal("authorization outage admitted device")
 	}
+}
+
+// A read-only fixture retains disconnect work like the durable registry outbox.
+type testDisconnectStore struct {
+	sessions []enrollment.BrokerSession
+	cleaned  bool
+}
+
+func (s *testDisconnectStore) PendingDisconnects(context.Context, int) ([]enrollment.BrokerSession, error) {
+	return append([]enrollment.BrokerSession(nil), s.sessions...), nil
+}
+func (s *testDisconnectStore) CleanExpiredSessions(context.Context) error {
+	s.cleaned = true
+	return nil
 }
