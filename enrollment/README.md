@@ -66,4 +66,6 @@ The real-broker callout test verifies successful individual-key authorization,
 unknown/revoked/expired key rejection, recorded-session disconnection, automatic
 certificate-expiry disconnection, and denial when the authorizer is unavailable.
 Unit tests also verify connection binding, nonce replay rejection and redacted
-denials. No production identity database or revocation worker is wired in yet.
+denials. The [durable registry](registry/README.md) now implements the PostgreSQL
+identity/session callback and disconnect outbox, with a combined real-broker test.
+It is not yet wired into production services or the released agent.
