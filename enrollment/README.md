@@ -30,4 +30,40 @@ JetStream consumer. It does not grant consumer creation. The trusted service mus
 pre-create the consumer with the intended filters; otherwise a device could create
 its own-named consumer over someone else's messages. Temporary reply permissions
 allow one response to an actual received request, instead of blanket inbox publish
-access. Broker integration tests must verify these policies with a real NATS server.
+access.
+
+The root package's `ConnectAgent` uses an explicit `wss://.../agent-channel`,
+NKey nonce proof and the private inbox prefix. It does not fall back to TCP or
+accept credentials in a URL. Discovered broker addresses are ignored so a private
+backend address cannot route around the gateway. Reconnection and protocol pings
+remain active for the configured gateway endpoint.
+
+Integration tests run a real TLS WebSocket NATS broker and verify individual-key
+login, gateway TLS validation, private request/reply, rejection of other device
+and administrator subjects, prevention of consumer creation, pre-provisioned
+consumer delivery and acknowledgement. They use NATS Server 2.14.6 and Go client
+1.53.1. The production gateway route, authentication service, worker binding and
+agent release are separate integration requirements still in progress.
+
+`BrokerAuthorizer` implements config-mode NATS auth callout. A protected NKey
+service subscribes in an isolated authorization account; configured service NKeys
+also enable the nonce challenge in the stock server. The broker's actual nonce is
+15 characters in the tested version. The authorizer verifies that proof, binds its
+response to the requesting server and fresh connection key, and delegates active
+identity lookup plus session recording to one atomic database callback. Device
+grants last at most five minutes and never outlive the issued certificate.
+
+The callback must persist the server ID and client ID before returning a grant.
+Revocation must commit before sending the recorded sessions to the private system
+account's `$SYS.REQ.SERVER.<server-id>.KICK` endpoint. If that path is unavailable,
+the broker lease bounds how long an existing connection can remain usable. A
+database failure or auth-service outage must deny new connections. Never expose
+the callout subscription or system account to the public gateway or ordinary
+devices, and never trust a self-signed server JWT received outside that protected
+subscription. Separate production configuration must enforce these boundaries.
+
+The real-broker callout test verifies successful individual-key authorization,
+unknown/revoked/expired key rejection, recorded-session disconnection, automatic
+certificate-expiry disconnection, and denial when the authorizer is unavailable.
+Unit tests also verify connection binding, nonce replay rejection and redacted
+denials. No production identity database or revocation worker is wired in yet.
