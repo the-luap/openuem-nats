@@ -1,0 +1,35 @@
+name: Individual agent enrollment
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'feature/**']
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-and-registry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: openuem_test
+          POSTGRES_PASSWORD: local-test-only
+          POSTGRES_DB: openuem_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openuem_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AGENT_ENROLLMENT_TEST_DATABASE_URL: postgres://openuem_test:local-test-only@127.0.0.1:5432/openuem_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.8'
+          cache: true
+      - name: Key proof, TLS broker, scope, registry and revocation
+        run: go test -race -count=1 ./...
