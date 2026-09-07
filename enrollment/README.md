@@ -79,3 +79,11 @@ without discarding retry work. Unattempted sessions take priority over retries s
 an older failing batch cannot starve later revocations. Tests exercise the actual
 service wrapper against NATS and its lookup/shutdown bounds. Executable service
 configuration and deployment wiring remain separate integration work.
+
+`keyfile.Read` bounds credential reads and checks the opened file's permissions.
+Unix files must belong to the current user or root and grant no group/other
+access. Windows files require a non-null DACL and an owner/allow entries limited
+to the service user, Local System and Administrators. A native Windows CI check
+exercises a private DACL and rejection of an Everyone-readable file. These checks
+do not replace endpoint encryption, atomic installation or protected directory
+provisioning, which remain part of the agent/bootstrap integration.
