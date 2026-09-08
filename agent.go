@@ -201,6 +201,7 @@ type AgentReport struct {
 }
 
 type Config struct {
+	HardwareInventoryVersion int  `json:"hardware_inventory_version,omitempty"`
 	Ok                       bool `json:"ok,omitempty"`
 	AgentFrequency           int  `json:"agent_frequency,omitempty"`
 	WinGetFrequency          int  `json:"winget_frequency,omitempty"`
