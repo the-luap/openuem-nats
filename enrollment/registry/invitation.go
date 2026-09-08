@@ -29,19 +29,34 @@ type Invitation struct {
 }
 
 func (s *Store) Invite(ctx context.Context, options InvitationOptions, actor string) (*Invitation, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	invitation, err := s.InviteInTransaction(ctx, tx, options, actor)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return invitation, nil
+}
+
+// InviteInTransaction allows a trusted console to bind an invitation to approved
+// installer metadata atomically. The caller owns commit/rollback and must not
+// expose the returned token until commit succeeds. Use a transaction from the
+// same registry database and roll it back on any error.
+func (s *Store) InviteInTransaction(ctx context.Context, tx *sql.Tx, options InvitationOptions, actor string) (*Invitation, error) {
 	now := time.Now()
-	if !options.Scope.valid() || options.SiteID == 0 || (options.Platform != "windows" && options.Platform != "macos") || (options.Architecture != "amd64" && options.Architecture != "arm64") || options.MaxUses < 1 || options.MaxUses > 1000 || !options.ExpiresAt.After(now) || options.ExpiresAt.After(now.Add(7*24*time.Hour)) {
+	if tx == nil || !options.Scope.valid() || options.SiteID == 0 || (options.Platform != "windows" && options.Platform != "macos") || (options.Architecture != "amd64" && options.Architecture != "arm64") || options.MaxUses < 1 || options.MaxUses > 1000 || !options.ExpiresAt.After(now) || options.ExpiresAt.After(now.Add(7*24*time.Hour)) {
 		return nil, ErrInvalid
 	}
 	token, err := newToken()
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 	var origin string
 	var siteID int
 	err = tx.QueryRowContext(ctx, `SELECT a.public_origin,s.id FROM uem_agent_authorities a JOIN sites s ON s.tenant_sites=a.tenant_id WHERE a.tenant_id=$1 AND s.id=$2 AND a.expires_at>clock_timestamp()+INTERVAL '24 hours' FOR SHARE OF a,s`, options.TenantID, options.SiteID).Scan(&origin, &siteID)
@@ -54,9 +69,6 @@ func (s *Store) Invite(ctx context.Context, options InvitationOptions, actor str
 		return nil, err
 	}
 	if err = audit(ctx, tx, options.Scope, actor, "agent.invitation.create", id); err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &Invitation{InvitationOptions: options, ID: id, URL: origin + "/enroll/desktop/" + token}, nil
@@ -76,12 +88,38 @@ func (s *Store) Claim(ctx context.Context, request enrollment.Request) (*enrollm
 		return nil, err
 	}
 	defer tx.Rollback()
+	response, err := s.claimInTransaction(ctx, tx, request, identity)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+// ClaimInTransaction composes verified endpoint issuance with the caller's
+// release/invitation checks and related state. It always validates both endpoint
+// key proofs itself. The caller must use this registry's database, roll back on
+// error, and commit before exposing the returned device certificate/identity.
+func (s *Store) ClaimInTransaction(ctx context.Context, tx *sql.Tx, request enrollment.Request) (*enrollment.Response, error) {
+	if tx == nil {
+		return nil, ErrInvalid
+	}
+	identity, err := enrollment.Validate(request)
+	if err != nil {
+		return nil, err
+	}
+	return s.claimInTransaction(ctx, tx, request, identity)
+}
+
+func (s *Store) claimInTransaction(ctx context.Context, tx *sql.Tx, request enrollment.Request, identity *enrollment.PublicIdentity) (*enrollment.Response, error) {
 	var invitationID, platform, architecture string
 	var scope Scope
 	var maxUses, uses int
 	var expires time.Time
 	var revoked sql.NullTime
-	err = tx.QueryRowContext(ctx, `SELECT i.id,i.tenant_id,i.site_id,i.platform,i.architecture,i.max_uses,i.uses,i.expires_at,i.revoked_at FROM uem_agent_invitations i JOIN sites s ON s.id=i.site_id AND s.tenant_sites=i.tenant_id WHERE i.token_hash=$1 FOR UPDATE OF i FOR SHARE OF s`, digest([]byte(request.Invitation))).Scan(&invitationID, &scope.TenantID, &scope.SiteID, &platform, &architecture, &maxUses, &uses, &expires, &revoked)
+	err := tx.QueryRowContext(ctx, `SELECT i.id,i.tenant_id,i.site_id,i.platform,i.architecture,i.max_uses,i.uses,i.expires_at,i.revoked_at FROM uem_agent_invitations i JOIN sites s ON s.id=i.site_id AND s.tenant_sites=i.tenant_id WHERE i.token_hash=$1 FOR UPDATE OF i FOR SHARE OF s`, digest([]byte(request.Invitation))).Scan(&invitationID, &scope.TenantID, &scope.SiteID, &platform, &architecture, &maxUses, &uses, &expires, &revoked)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -90,7 +128,7 @@ func (s *Store) Claim(ctx context.Context, request enrollment.Request) (*enrollm
 	}
 	response, err := claimedResponse(ctx, tx, invitationID, identity.KeyBinding)
 	if err == nil {
-		return response, tx.Commit()
+		return response, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -136,9 +174,6 @@ func (s *Store) Claim(ctx context.Context, request enrollment.Request) (*enrollm
 		return nil, err
 	}
 	if err = audit(ctx, tx, scope, "enrollment", "agent.identity.issue", id); err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	return publicResponse(id, scope, origin, certificate, caPEM, certificateExpires), nil

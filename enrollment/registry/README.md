@@ -29,6 +29,16 @@ identities; those have a separate explicit action. Production HTTP handlers must
 apply rate limits and return redacted errors, and console callers must enforce
 action permissions before using the store.
 
+`InviteInTransaction` and `ClaimInTransaction` compose these operations with a
+trusted caller's related state, such as the console's approved installer binding.
+Use a transaction from the same registry database, roll it back on any error, and
+commit before exposing a returned invitation token or issued identity. These
+methods never commit for the caller. Claim still verifies both endpoint key proofs;
+the ordinary `Claim` API retains its validation-before-transaction behavior.
+Rollback removes invitation/identity changes, use-count increments, success audit
+events and the triggered command-consumer work together. Keep transaction lock
+order consistent in all callers and avoid network operations while holding locks.
+
 `AccessStore` needs no encryption master key or CA signing key. It resolves active
 device scope for workers and provides the broker authorizer's database callback.
 The callback checks identity and records the actual server/client session in one
