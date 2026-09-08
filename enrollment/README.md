@@ -30,6 +30,16 @@ diagnostics. It has a 30-second request bound, 10-second dial/TLS bounds,
 At most two connections to the origin are active. The caller cancels active
 request contexts and releases idle connections with `CloseIdleConnections`.
 
+`HTTPClient.BootstrapKeys` and `HTTPClient.Configuration` use the same transport
+for exact, read-only GET routes at that previously authorized origin. They bound
+key documents to 8 KiB and configuration envelopes to 96 KiB, reject invalid JSON,
+unexpected content types/encodings and partial or oversized responses, and never
+redirect or retry implicitly. Configuration tokens are validated before any HTTP
+request. The returned buffers belong to the caller; clear configuration bytes
+after verification. Use `bootstrap.ParseOriginKeys` to validate keys obtained from
+that authenticated channel and `bootstrap.Verify` with independently provisioned
+release keys. Fetching bytes alone does not validate signatures or authorize scope.
+
 `ValidateResponse` requires the local CSR public key, canonical assigned device
 ID, positive organization/site IDs, same-origin WSS endpoint, exactly one matching
 identity URI and a currently valid client-auth certificate from the returned

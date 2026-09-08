@@ -24,7 +24,7 @@ import (
 
 const (
 	Schema          = 1
-	MaxEnvelopeSize = 96 << 10
+	MaxEnvelopeSize = enrollment.MaxBootstrapConfigurationSize
 	domain          = "openuem/desktop-bootstrap-configuration/v1\x00"
 )
 

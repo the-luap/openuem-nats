@@ -23,10 +23,17 @@ var (
 	ErrEnrollmentRejected    = errors.New("the enrollment service rejected the request")
 )
 
-const maxResponseBody = 96 << 10
+const (
+	maxResponseBody = 96 << 10
+	// MaxBootstrapKeysSize bounds the origin's authenticated public-key document.
+	MaxBootstrapKeysSize = 8 << 10
+	// MaxBootstrapConfigurationSize bounds the signed installation envelope.
+	MaxBootstrapConfigurationSize = 96 << 10
+)
 
-// HTTPClient claims identities only at an independently authorized origin. It
-// owns its transport, has no cookies, redirects or environment proxy, and never
+// HTTPClient fetches bootstrap documents and claims identities only at an
+// independently authorized origin. It owns its transport, has no cookies,
+// redirects or environment proxy, and never
 // exposes request URLs, invitation tokens or server error bodies in errors.
 type HTTPClient struct {
 	origin    string
@@ -82,6 +89,48 @@ func (c *HTTPClient) Claim(ctx context.Context, request Request) (*Response, err
 		return nil, ErrEnrollmentTransport
 	}
 	r.Header.Set("Content-Type", "application/json")
+	data, err := c.doJSON(r, maxResponseBody)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(data)
+	issued, err := decodeResponse(data)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = ValidateResponse(issued, c.origin, identity.CertificateKey, time.Now()); err != nil {
+		return nil, err
+	}
+	return &issued, nil
+}
+
+// BootstrapKeys obtains the origin's public configuration keys through verified
+// HTTPS. The caller must parse the bounded document with bootstrap.ParseOriginKeys
+// and the independently authorized origin. These are not release signing keys.
+func (c *HTTPClient) BootstrapKeys(ctx context.Context) ([]byte, error) {
+	return c.getJSON(ctx, "/enroll/desktop/bootstrap-keys", MaxBootstrapKeysSize)
+}
+
+// Configuration downloads a limited signed configuration without claiming an
+// identity. The caller owns the returned buffer and must verify it with bootstrap
+// before use. No key or origin read from that document establishes its own trust.
+func (c *HTTPClient) Configuration(ctx context.Context, invitation string) ([]byte, error) {
+	if !ValidToken(invitation) {
+		return nil, ErrInvalidProof
+	}
+	return c.getJSON(ctx, "/enroll/desktop/"+invitation+"/configuration", MaxBootstrapConfigurationSize)
+}
+
+func (c *HTTPClient) getJSON(ctx context.Context, path string, limit int64) ([]byte, error) {
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, c.origin+path, nil)
+	if err != nil {
+		return nil, ErrEnrollmentTransport
+	}
+	return c.doJSON(r, limit)
+}
+
+func (c *HTTPClient) doJSON(r *http.Request, limit int64) ([]byte, error) {
+	ctx := r.Context()
 	r.Header.Set("Accept", "application/json")
 	response, err := c.client.Do(r)
 	if err != nil {
@@ -102,24 +151,22 @@ func (c *HTTPClient) Claim(ctx context.Context, request Request) (*Response, err
 		}
 	}
 	mediaType, params, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" || len(response.Header.Values("Content-Type")) != 1 || len(params) > 1 || (len(params) == 1 && !strings.EqualFold(params["charset"], "utf-8")) || response.Header.Get("Content-Encoding") != "" || response.ContentLength > maxResponseBody {
+	if err != nil || mediaType != "application/json" || len(response.Header.Values("Content-Type")) != 1 || len(params) > 1 || (len(params) == 1 && !strings.EqualFold(params["charset"], "utf-8")) || len(response.Header.Values("Content-Encoding")) != 0 || response.ContentLength > limit {
 		return nil, ErrInvalidResponse
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBody+1))
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
+		clear(data)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		return nil, ErrEnrollmentTransport
 	}
-	issued, err := decodeResponse(data)
-	if err != nil {
-		return nil, err
+	if int64(len(data)) > limit || !utf8.Valid(data) || !json.Valid(data) {
+		clear(data)
+		return nil, ErrInvalidResponse
 	}
-	if _, err = ValidateResponse(issued, c.origin, identity.CertificateKey, time.Now()); err != nil {
-		return nil, err
-	}
-	return &issued, nil
+	return data, nil
 }
 
 func decodeResponse(data []byte) (Response, error) {

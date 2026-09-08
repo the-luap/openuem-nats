@@ -42,6 +42,17 @@ its digest, expiry and supported artifact. It derives the exact download URL fro
 the authorized origin and selected release; no alternative download URL is trusted.
 CA keys and HTTPS certificate keys are not substitutes for either signing role.
 
+`enrollment.HTTPClient.BootstrapKeys` fetches an origin's key document over its
+bounded verified HTTPS transport without redirects. `ParseOriginKeys` accepts
+only schema 1, the exact independently authorized origin and one to eight distinct
+32-byte Ed25519 keys with matching lowercase SHA-256 IDs and canonical unpadded
+standard base64. The document is limited to 8 KiB and uses the same strict JSON
+rules. Parsing does not authenticate a file obtained through another channel.
+`MarshalOriginKeys` provides the matching server representation. These keys only
+authorize configuration signatures; release keys still come from separate trust.
+`HTTPClient.Configuration` fetches the bounded signed envelope at the exact token
+path without claiming an invitation; call `Verify` before using its contents.
+
 `Verified` keeps authenticated values private and returns copies. Before use,
 recheck `ValidAt` against current time and the latest durable checkpoint. Verify
 actual package bytes through `VerifyPackage` without reopening a replaceable path;
