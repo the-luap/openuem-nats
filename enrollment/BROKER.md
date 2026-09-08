@@ -43,8 +43,11 @@ identity. `ReconcileAgentCommandConsumers` performs bounded creation/deletion fr
 the registry's durable work queue, including revocation. Its executable service
 integration and claim-response coordination are still required.
 
-Agents obtain their existing consumer with `JetStream.Consumer` rather than
-creating or updating it. Pull one message at a time with an expiry no longer than
+Agents use `OpenAgentCommandConsumer`, which reads only their exact consumer and
+validates its stream/name, device filters, acknowledgment/delivery policy and pull
+bounds. Missing or conflicting configuration returns an error without a creation,
+update or stream-management request. Retry after the trusted service reconciles
+the consumer. Pull one message at a time with an expiry no longer than
 30 seconds. A command exceeding five delivery attempts remains visible for
 operator investigation; this package does not silently acknowledge failed work.
 

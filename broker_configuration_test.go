@@ -200,7 +200,7 @@ func TestGeneratedBrokerConfigSeparatesServicesAndFixedDeviceConsumers(t *testin
 	}
 	deviceJS, _ := jetstream.New(device)
 	consumerName, _ := enrollment.ConsumerName(id)
-	consumer, err := deviceJS.Consumer(ctx, "AGENTS_STREAM", consumerName)
+	consumer, err := OpenAgentCommandConsumer(ctx, deviceJS, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,5 +252,27 @@ func TestGeneratedBrokerConfigSeparatesServicesAndFixedDeviceConsumers(t *testin
 	}
 	if err = EnsureAgentCommandConsumer(ctx, js, id); !errors.Is(err, ErrAgentCommands) {
 		t.Fatal("unexpected consumer configuration silently accepted", err)
+	}
+	if _, err = OpenAgentCommandConsumer(ctx, deviceJS, id); !errors.Is(err, ErrAgentCommands) {
+		t.Fatal("endpoint accepted a conflicting fixed consumer", err)
+	}
+	info, err = consumer.Info(ctx)
+	if err != nil || len(info.Config.FilterSubjects) != 1 || info.Config.FilterSubjects[0] != "agent.report."+id {
+		t.Fatal("endpoint rewrote the conflicting consumer", err)
+	}
+	if err = js.DeleteConsumer(ctx, "AGENTS_STREAM", consumerName); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = OpenAgentCommandConsumer(ctx, deviceJS, id); !errors.Is(err, ErrAgentCommands) {
+		t.Fatal("endpoint recreated its missing consumer", err)
+	}
+	if _, err = js.Consumer(ctx, "AGENTS_STREAM", consumerName); !errors.Is(err, jetstream.ErrConsumerNotFound) {
+		t.Fatal("read-only consumer opening created broker state", err)
+	}
+	if err = EnsureAgentCommandConsumer(ctx, js, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = OpenAgentCommandConsumer(ctx, deviceJS, id); err != nil {
+		t.Fatal("endpoint could not retry after server reconciliation", err)
 	}
 }

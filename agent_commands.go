@@ -66,12 +66,7 @@ func EnsureAgentCommandConsumer(ctx context.Context, js jetstream.JetStream, dev
 	if err != nil || js == nil {
 		return ErrAgentCommands
 	}
-	expected := jetstream.ConsumerConfig{
-		Name: name, Durable: name, FilterSubjects: commandSubjects(deviceID),
-		AckPolicy: jetstream.AckExplicitPolicy, AckWait: 5 * time.Minute, MaxDeliver: 5,
-		MaxAckPending: 1, DeliverPolicy: jetstream.DeliverAllPolicy, ReplayPolicy: jetstream.ReplayInstantPolicy,
-		MaxRequestBatch: 1, MaxRequestExpires: 30 * time.Second, MaxWaiting: 16,
-	}
+	expected := agentCommandConsumerConfig(name, deviceID)
 	consumer, err := js.CreateConsumer(ctx, "AGENTS_STREAM", expected)
 	if err != nil {
 		consumer, err = js.Consumer(ctx, "AGENTS_STREAM", name)
@@ -80,12 +75,45 @@ func EnsureAgentCommandConsumer(ctx context.Context, js jetstream.JetStream, dev
 		}
 	}
 	info, err := consumer.Info(ctx)
-	if err != nil {
-		return ErrAgentCommands
-	}
-	actual := info.Config
-	if actual.Durable != name || actual.FilterSubject != "" || !sameSubjects(actual.FilterSubjects, expected.FilterSubjects) || actual.AckPolicy != expected.AckPolicy || actual.AckWait != expected.AckWait || actual.MaxDeliver != expected.MaxDeliver || actual.MaxAckPending != 1 || actual.DeliverPolicy != expected.DeliverPolicy || actual.ReplayPolicy != expected.ReplayPolicy || actual.MaxRequestBatch != 1 || actual.MaxRequestExpires != expected.MaxRequestExpires || actual.MaxWaiting != expected.MaxWaiting || len(actual.BackOff) != 0 || actual.HeadersOnly || actual.InactiveThreshold != 0 || actual.PauseUntil != nil {
+	if err != nil || !validAgentCommandConsumer(info, name, expected) {
 		return ErrAgentCommands
 	}
 	return nil
+}
+
+// OpenAgentCommandConsumer only reads the endpoint's fixed consumer. It never
+// creates/updates a stream or consumer, including when provisioning is delayed
+// or an existing definition is incompatible. Callers retry after reconciliation.
+func OpenAgentCommandConsumer(ctx context.Context, js jetstream.JetStream, deviceID string) (jetstream.Consumer, error) {
+	name, err := enrollment.ConsumerName(deviceID)
+	if err != nil || js == nil {
+		return nil, ErrAgentCommands
+	}
+	consumer, err := js.Consumer(ctx, "AGENTS_STREAM", name)
+	if err != nil {
+		return nil, ErrAgentCommands
+	}
+	// Consumer() already performs an INFO request; validate that response without
+	// an unnecessary second round trip or a broader stream-management request.
+	if !validAgentCommandConsumer(consumer.CachedInfo(), name, agentCommandConsumerConfig(name, deviceID)) {
+		return nil, ErrAgentCommands
+	}
+	return consumer, nil
+}
+
+func agentCommandConsumerConfig(name, deviceID string) jetstream.ConsumerConfig {
+	return jetstream.ConsumerConfig{
+		Name: name, Durable: name, FilterSubjects: commandSubjects(deviceID),
+		AckPolicy: jetstream.AckExplicitPolicy, AckWait: 5 * time.Minute, MaxDeliver: 5,
+		MaxAckPending: 1, DeliverPolicy: jetstream.DeliverAllPolicy, ReplayPolicy: jetstream.ReplayInstantPolicy,
+		MaxRequestBatch: 1, MaxRequestExpires: 30 * time.Second, MaxWaiting: 16,
+	}
+}
+
+func validAgentCommandConsumer(info *jetstream.ConsumerInfo, name string, expected jetstream.ConsumerConfig) bool {
+	if info == nil || info.Name != name || info.Stream != "AGENTS_STREAM" {
+		return false
+	}
+	actual := info.Config
+	return actual.Name == name && actual.Durable == name && actual.FilterSubject == "" && sameSubjects(actual.FilterSubjects, expected.FilterSubjects) && actual.AckPolicy == expected.AckPolicy && actual.AckWait == expected.AckWait && actual.MaxDeliver == expected.MaxDeliver && actual.MaxAckPending == 1 && actual.DeliverPolicy == expected.DeliverPolicy && actual.ReplayPolicy == expected.ReplayPolicy && actual.MaxRequestBatch == 1 && actual.MaxRequestExpires == expected.MaxRequestExpires && actual.MaxWaiting == expected.MaxWaiting && len(actual.BackOff) == 0 && !actual.HeadersOnly && actual.InactiveThreshold == 0 && actual.PauseUntil == nil
 }
