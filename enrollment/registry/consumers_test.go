@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,9 +15,13 @@ import (
 	"github.com/open-uem/nats/enrollment"
 )
 
-type failConsumerAcknowledgment struct{ *AccessStore }
+type failConsumerAcknowledgment struct {
+	*AccessStore
+	called *atomic.Bool
+}
 
 func (s failConsumerAcknowledgment) CompleteCommandConsumer(context.Context, enrollment.CommandConsumerWork) error {
+	s.called.Store(true)
 	return errors.New("simulated post-broker database failure")
 }
 
@@ -30,7 +35,7 @@ func TestDurableConsumerWorkReconcilesRealBrokerAfterUncertainCompletion(t *test
 		t.Fatal(err)
 	}
 	access, _ := NewAccessStore(s.db)
-	broker, err := server.NewServer(&server.Options{Host: "127.0.0.1", Port: -1, NoLog: true, NoSigs: true, JetStream: true, StoreDir: t.TempDir()})
+	broker, err := server.NewServer(&server.Options{Host: "127.0.0.1", Port: -1, NoLog: true, NoSigs: true, JetStream: true, JetStreamMaxStore: int64(8) << 30, JetStreamMaxMemory: 64 << 20, StoreDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +53,8 @@ func TestDurableConsumerWorkReconcilesRealBrokerAfterUncertainCompletion(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = openuem.ReconcileAgentCommandConsumers(ctx, js, failConsumerAcknowledgment{access}); err == nil {
+	acknowledgmentCalled := &atomic.Bool{}
+	if err = openuem.ReconcileAgentCommandConsumers(ctx, js, failConsumerAcknowledgment{access, acknowledgmentCalled}); err == nil || !acknowledgmentCalled.Load() {
 		t.Fatal("uncertain database completion was accepted")
 	}
 	name, _ := enrollment.ConsumerName(issued.DeviceID)
