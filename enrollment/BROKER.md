@@ -39,8 +39,9 @@ subject is present.
 It uses explicit acknowledgments, one pending command, five delivery attempts and
 bounded pull requests. Call it after durable identity issuance and before the
 endpoint is told it can connect; retry a broker failure without issuing a different
-identity. A reconciliation service must also handle process/broker failures and
-delete consumers after revocation. That runtime integration is still required.
+identity. `ReconcileAgentCommandConsumers` performs bounded creation/deletion from
+the registry's durable work queue, including revocation. Its executable service
+integration and claim-response coordination are still required.
 
 Agents obtain their existing consumer with `JetStream.Consumer` rather than
 creating or updating it. Pull one message at a time with an expiry no longer than
@@ -57,3 +58,17 @@ it with the stock NATS parser and runs TLS/WSS, service isolation, nonce proof,
 individual queued delivery and filter-conflict tests. It also checks that public
 service keys without valid signatures cannot use the static bypass. This is
 automated protocol evidence, not production firewall or physical endpoint acceptance.
+
+Registry migration `002_command_consumers.sql` atomically records desired consumer
+state on identity issuance, revocation, renewal and site ownership changes. It
+backfills existing identities and keeps older trusted registry writers compatible
+through triggers. Polling detects certificate expiry as time passes. Work is leased
+for 30 seconds, processed in batches of 32 with at most eight simultaneous broker
+operations, and acknowledged only for the leased revision and desired state. A stale
+completion requests another check of the current state. Hourly reconciliation
+recovers broker data loss or a process crash after a broker operation but before
+database acknowledgment. New or never-attempted work takes priority over retries.
+
+Combined PostgreSQL/NATS tests cover uncertain completion, process-state recreation,
+idempotent retry, revocation deletion and repeated deletion of an absent consumer.
+Database race tests cover leased work, stale acknowledgments, site moves and expiry.
