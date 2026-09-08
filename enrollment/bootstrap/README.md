@@ -53,6 +53,15 @@ authorize configuration signatures; release keys still come from separate trust.
 `HTTPClient.Configuration` fetches the bounded signed envelope at the exact token
 path without claiming an invitation; call `Verify` before using its contents.
 
+`Verified.DownloadPackage` connects that exact verified origin/release/target to
+the native client's bounded download transport. It refuses a client constructed
+for another origin and checks configuration expiry before and after the transfer.
+It streams only to caller-owned private staging; incomplete or rejected output must
+never be installed. Native signatures, secure file handling and the current durable
+checkpoint remain mandatory. The shared `keyfile.Open` helper checks a protected
+regular file and returns its owned read-only descriptor for bounded streaming;
+keep ancestors protected and avoid replacing the file between checks and use.
+
 `Verified` keeps authenticated values private and returns copies. Before use,
 recheck `ValidAt` against current time and the latest durable checkpoint. Verify
 actual package bytes through `VerifyPackage` without reopening a replaceable path;

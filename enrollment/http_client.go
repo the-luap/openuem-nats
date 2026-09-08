@@ -69,6 +69,9 @@ func NewHTTPClient(expectedOrigin string, roots *x509.CertPool) (*HTTPClient, er
 // active request contexts. No endpoint private keys are held by this client.
 func (c *HTTPClient) CloseIdleConnections() { c.transport.CloseIdleConnections() }
 
+// Origin is the canonical HTTPS origin independently authorized at construction.
+func (c *HTTPClient) Origin() string { return c.origin }
+
 // Claim does not automatically retry or persist keys. Repeat it with the same
 // durably stored keys after an interrupted response. Both request proofs are
 // validated before transport, and the response is bound to that CSR's public key.
@@ -140,15 +143,8 @@ func (c *HTTPClient) doJSON(r *http.Request, limit int64) ([]byte, error) {
 		return nil, ErrEnrollmentTransport
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		switch response.StatusCode {
-		case http.StatusNotFound, http.StatusGone:
-			return nil, ErrEnrollmentUnavailable
-		case http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
-			return nil, ErrEnrollmentBusy
-		default:
-			return nil, ErrEnrollmentRejected
-		}
+	if err := responseStatusError(response.StatusCode); err != nil {
+		return nil, err
 	}
 	mediaType, params, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" || len(response.Header.Values("Content-Type")) != 1 || len(params) > 1 || (len(params) == 1 && !strings.EqualFold(params["charset"], "utf-8")) || len(response.Header.Values("Content-Encoding")) != 0 || response.ContentLength > limit {
@@ -167,6 +163,19 @@ func (c *HTTPClient) doJSON(r *http.Request, limit int64) ([]byte, error) {
 		return nil, ErrInvalidResponse
 	}
 	return data, nil
+}
+
+func responseStatusError(status int) error {
+	switch status {
+	case http.StatusOK:
+		return nil
+	case http.StatusNotFound, http.StatusGone:
+		return ErrEnrollmentUnavailable
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
+		return ErrEnrollmentBusy
+	default:
+		return ErrEnrollmentRejected
+	}
 }
 
 func decodeResponse(data []byte) (Response, error) {

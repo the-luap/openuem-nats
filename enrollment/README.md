@@ -40,6 +40,17 @@ after verification. Use `bootstrap.ParseOriginKeys` to validate keys obtained fr
 that authenticated channel and `bootstrap.Verify` with independently provisioned
 release keys. Fetching bytes alone does not validate signatures or authorize scope.
 
+`HTTPClient.DownloadPackage` accepts an independently verified release object and
+exact platform/architecture. It derives the fixed same-origin path and streams to
+caller-owned private staging with the signed size/hash bound. The stream has a
+separate 15-minute deadline while sharing the verified transport and two-connection
+budget; ordinary claims retain their 30-second limit. Unexpected partial responses,
+redirects, encodings, content types, changed lengths or bytes are rejected. Release
+expiry is checked again after download. Failures can leave at most the signed size
+plus one byte of untrusted output; discard it. Writers must return promptly, since
+request cancellation cannot interrupt an arbitrary writer. Native signature checks
+and the latest persisted checkpoint remain separate requirements.
+
 `ValidateResponse` requires the local CSR public key, canonical assigned device
 ID, positive organization/site IDs, same-origin WSS endpoint, exactly one matching
 identity URI and a currently valid client-auth certificate from the returned
