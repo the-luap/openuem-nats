@@ -34,3 +34,23 @@ func TestCredentialFileRejectsSharedPermissionsDirectoriesAndOversize(t *testing
 		t.Fatal("directory accepted", err)
 	}
 }
+
+func TestSharedDirectoryIsRejectedWithoutChangingPermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckDirectory(path); !errors.Is(err, ErrPrivateDirectory) {
+		t.Fatal("shared directory accepted", err)
+	}
+	if err := CreateDirectory(path); !errors.Is(err, ErrPrivateDirectory) {
+		t.Fatal("shared directory silently reused", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0755 {
+		t.Fatal("setup changed existing directory permissions", err)
+	}
+}

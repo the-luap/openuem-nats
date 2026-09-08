@@ -49,3 +49,33 @@ func TestWindowsCredentialFileRequiresPrivateDACL(t *testing.T) {
 		t.Fatal("oversized credential accepted", err)
 	}
 }
+
+func TestWindowsSharedDirectoryIsRejectedWithoutChangingItsDACL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing")
+	if err := CreateDirectory(path); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;OICI;FA;;;WD)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime.KeepAlive(descriptor)
+	if err = CheckDirectory(path); !errors.Is(err, ErrPrivateDirectory) {
+		t.Fatal("Everyone-accessible directory accepted", err)
+	}
+	if err = CreateDirectory(path); !errors.Is(err, ErrPrivateDirectory) {
+		t.Fatal("shared directory silently reused", err)
+	}
+	// A second check must still reject it: setup must not silently rewrite an
+	// administrator's existing ACL to make it pass.
+	if err = CheckDirectory(path); !errors.Is(err, ErrPrivateDirectory) {
+		t.Fatal("setup changed the existing DACL", err)
+	}
+}

@@ -115,3 +115,13 @@ to the service user, Local System and Administrators. A native Windows CI check
 exercises a private DACL and rejection of an Everyone-readable file. These checks
 do not replace endpoint encryption, atomic installation or protected directory
 provisioning, which remain part of the agent/bootstrap integration.
+
+`keyfile.CreateDirectory` creates one private credential directory without creating
+parents or changing an existing directory's permissions. Unix uses owner-only
+permissions; Windows sets a protected, inheritable DACL for the current service
+identity, Local System and Administrators before creation. `CheckDirectory`
+validates the opened directory's owner/access controls and rejects a final
+symlink or replacement during open. Existing shared directories fail unchanged.
+Callers must select parents protected against renames by other users. Individual
+files still need `keyfile.Create`/`Read`; the directory does not replace per-file
+checks, native encryption, atomic publication or durable enrollment state.
