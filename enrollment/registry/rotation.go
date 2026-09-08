@@ -168,6 +168,13 @@ func (s *AccessStore) HandleRotation(ctx context.Context, identity Identity, req
 		if !bytes.Equal(canonical, envelope) {
 			return nil, ErrDenied
 		}
+		// Certificate metadata may have been shortened since queueing. A live
+		// request still needs its publication reserve at the delivery boundary;
+		// receipt-only recovery above deliberately requires no new execution.
+		var reserved bool
+		if err = tx.QueryRowContext(ctx, `SELECT certificate_expires_at>=to_timestamp($2) FROM uem_agent_identities WHERE id=$1`, i.AgentID, c.Binding.ExpiresAt+int64(enrollment.RotationReceiptGrace/time.Second)).Scan(&reserved); err != nil || !reserved || time.Unix(c.Binding.ExpiresAt, 0).Add(enrollment.RotationReceiptGrace).After(cert.NotAfter) {
+			return nil, ErrDenied
+		}
 		delivery, err := tx.ExecContext(ctx, `UPDATE uem_agent_rotation_tasks SET delivered_at=COALESCE(delivered_at,clock_timestamp()) WHERE id=$1 AND expires_at>clock_timestamp()`, id)
 		if err != nil {
 			return nil, err

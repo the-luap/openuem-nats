@@ -494,6 +494,28 @@ func TestRotationQueueReservesTimeForDurableReceiptPublication(t *testing.T) {
 	}
 }
 
+func TestRotationDeliveryRechecksShortenedCertificateLifetime(t *testing.T) {
+	f := newRotationFixture(t)
+	task := f.queue(t)
+	reservedUntil := task.Context.Binding.ExpiresAt + int64(enrollment.RotationReceiptGrace/time.Second)
+	if _, err := f.s.db.Exec(`UPDATE uem_agent_identities SET certificate_expires_at=to_timestamp($2) WHERE id=$1`, f.identity.ID, reservedUntil-1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.access.HandleRotation(t.Context(), *f.identity, f.pollRequest()); !errors.Is(err, ErrDenied) {
+		t.Fatal("delivery ignored shortened certificate lifetime", err)
+	}
+	var undelivered bool
+	if err := f.s.db.QueryRow(`SELECT delivered_at IS NULL FROM uem_agent_rotation_tasks WHERE id=$1`, task.Context.Binding.TaskID).Scan(&undelivered); err != nil || !undelivered {
+		t.Fatal("denied delivery recorded admission", err)
+	}
+	if _, err := f.s.db.Exec(`UPDATE uem_agent_identities SET certificate_expires_at=to_timestamp($2) WHERE id=$1`, f.identity.ID, reservedUntil); err != nil {
+		t.Fatal(err)
+	}
+	if reply, err := f.access.HandleRotation(t.Context(), *f.identity, f.pollRequest()); err != nil || reply.Task == nil {
+		t.Fatal("sufficient delivery reserve rejected", err)
+	}
+}
+
 func TestRotationMaintenanceBoundsSkipsLockedAndDoesNotStarve(t *testing.T) {
 	f := newRotationFixture(t)
 	completed := f.queue(t)
