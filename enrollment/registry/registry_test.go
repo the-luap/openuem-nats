@@ -153,6 +153,9 @@ func TestConcurrentClaimsUseOneIdentityAndPreserveScopeAndLocalKeys(t *testing.T
 	if result == nil || result.TenantID != 1 || result.SiteID != 1 || result.Endpoint != "wss://uem.example.test/agent-channel" {
 		t.Fatal("invitation scope was not authoritative")
 	}
+	if _, err := enrollment.ValidateResponse(*result, "https://uem.example.test", &keys.Certificate.PublicKey, time.Now()); err != nil {
+		t.Fatal("native client rejected the real registry's issued response", err)
+	}
 	block, _ := pem.Decode([]byte(result.Certificate))
 	if block == nil {
 		t.Fatal("missing public certificate")

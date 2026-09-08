@@ -19,6 +19,34 @@ local key storage before requesting issuance, so interrupted enrollment can reus
 them. Never put a private key or long-lived credential into an installer, manifest,
 command line or server response.
 
+`NewHTTPClient` claims through the exact HTTPS invitation path at an independently
+authorized origin. It owns a bounded transport with verified TLS, no redirects,
+no environment proxy and no cookie jar. Optional server roots are copied at
+construction; a returned organization authority never becomes HTTPS trust. The
+client validates both request proofs before sending, accepts only a bounded,
+strict JSON response, and returns generic errors without URLs, tokens or remote
+diagnostics. It has a 30-second request bound, 10-second dial/TLS bounds,
+25-second response-header limit, 32 KiB response headers and a 96 KiB response body.
+At most two connections to the origin are active. The caller cancels active
+request contexts and releases idle connections with `CloseIdleConnections`.
+
+`ValidateResponse` requires the local CSR public key, canonical assigned device
+ID, positive organization/site IDs, same-origin WSS endpoint, exactly one matching
+identity URI and a currently valid client-auth certificate from the returned
+identity CA. It rejects other endpoint keys, extra SAN identities, server/CA
+privileges, changed expiry, multiple PEM certificates and excessive leaf lifetime.
+The CA is trusted for this identity only because the origin was independently
+authorized and its HTTPS connection authenticated. This check is not an origin
+discovery mechanism and does not attest installation or hardware identity.
+
+`HTTPClient.Claim` does not store or automatically retry keys. A caller must
+durably protect pending keys **before the first call**, use those same keys after
+an interrupted response, validate approved package/bootstrap state independently,
+and commit the verified result before starting the individual agent. The native
+Windows/macOS protected-storage and installer integration remains separate work.
+Tests exercise real HTTPS/HTTP2, redirects, TLS rejection before credential
+transmission, strict response boundaries, cancellation and certificate binding.
+
 `RequestSubject` names the authenticated device and an explicit operation. Workers
 must validate that device against active enrollment and check every body resource
 against its assigned organization/site. They must also validate `ValidReply` before

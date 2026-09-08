@@ -18,8 +18,8 @@ jobs:
         with:
           go-version: '1.26.8'
           cache: true
-      - name: Native Windows credential ACL and installer manifest checks
-        run: go test -count=1 ./enrollment/keyfile ./enrollment/artifacts
+      - name: Native Windows enrollment HTTPS, credential ACL and installer manifest checks
+        run: go test -count=1 ./enrollment ./enrollment/keyfile ./enrollment/artifacts
   protocol-and-registry:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
