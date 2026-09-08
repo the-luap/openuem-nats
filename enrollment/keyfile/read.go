@@ -1,6 +1,6 @@
-// Package keyfile reads bounded credential files after checking their local
-// access controls. Endpoint encryption and atomic key installation are separate
-// responsibilities; this package never accepts a key through a command line.
+// Package keyfile creates and reads bounded credential files with private local
+// access controls. Endpoint encryption and rotation are separate responsibilities;
+// this package never accepts a key through a command line.
 package keyfile
 
 import (
