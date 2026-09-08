@@ -259,6 +259,23 @@ func (s *AccessStore) QueueRecoveryTask(ctx context.Context, tx *sql.Tx, task en
 	if err != nil || r.ID != c.RecipientID {
 		return ErrDenied
 	}
+	// An older deployment may not have the rotation migration yet. When it
+	// does, validation cannot run against a key while a mutation is unresolved.
+	var rotations bool
+	if err = tx.QueryRowContext(ctx, `SELECT to_regclass('uem_agent_rotation_tasks') IS NOT NULL`).Scan(&rotations); err != nil {
+		return err
+	}
+	if rotations {
+		if err = expireRotationForAgent(ctx, tx, i.AgentID); err != nil {
+			return err
+		}
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_rotation_tasks WHERE device_id=$1 AND status IN ('pending','uncertain'))`, i.AgentID).Scan(&rotations); err != nil {
+			return err
+		}
+		if rotations {
+			return ErrDenied
+		}
+	}
 	envelope, err := json.Marshal(task)
 	if err != nil || len(envelope) > enrollment.MaxRecoveryMessage {
 		return ErrDenied

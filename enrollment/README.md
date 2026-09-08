@@ -146,3 +146,8 @@ symlink or replacement during open. Existing shared directories fail unchanged.
 Callers must select parents protected against renames by other users. Individual
 files still need `keyfile.Create`/`Read`; the directory does not replace per-file
 checks, native encryption, atomic publication or durable enrollment state.
+
+The [FileVault rotation protocol](filevault-rotation.md) adds a distinct encrypted
+request/return format, current-certificate signed receipts and a permanent bounded
+attempt lifecycle. Its registry is available to trusted server components;
+endpoint execution and the console escrow workflow require separate integration.

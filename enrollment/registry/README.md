@@ -69,3 +69,9 @@ retries. A combined real NATS/PostgreSQL test authorizes an issued identity, rec
 its live session, recreates the access component, then kicks the correct connection
 and rejects reconnection after revocation. Tests do not install a Windows or Mac
 agent and are not hardware or production acceptance evidence.
+
+Migration 005 and `AccessStore` provide the [FileVault rotation registry](../filevault-rotation.md).
+Delivered expiry retains uncertainty, late authenticated key receipts remain
+recoverable, and immutable per-identity ordinals prevent automatic attempt reuse.
+Signed uncertainty continues to block mutation until independent console recovery.
+The worker does not receive plaintext keys or the console return private key.
