@@ -75,3 +75,6 @@ Delivered expiry retains uncertainty, late authenticated key receipts remain
 recoverable, and immutable per-identity ordinals prevent automatic attempt reuse.
 Signed uncertainty continues to block mutation until independent console recovery.
 The worker does not receive plaintext keys or the console return private key.
+Migration 006 binds a subsequent read-only validation to a signed, stopped
+uncertain attempt. Explicit console resolution requires that selected proof to
+validate the current key; its original receipt and ordinal remain immutable.

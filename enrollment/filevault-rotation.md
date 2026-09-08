@@ -120,10 +120,22 @@ without deleting replay-prevention evidence.
 The console must preserve all previously escrowed keys, reconcile a returned key
 with any newer native escrow response, and avoid overwriting a newer unrelated
 key. An uncertain attempt requires independent proof of the current key before
-being resolved; this registry exposes no automatic uncertainty-resolution API.
+being resolved. Migration 006 adds explicit, caller-authorized recovery APIs:
+`QueueRotationValidation` requires the exact signed uncertainty receipt before
+admitting a read-only validation task. Deadline expiry without a receipt remains
+blocked. The selected proof is bound to this rotation, identity, recipient and
+native Mac; replacing the proof cancels its pending predecessor. Ordinary validation
+and another mutation remain blocked while this recovery runs.
+
+`ResolveRotation` requires the selected subsequent proof's signed `valid` result,
+current authority, exact context and nonce, and a pre-expiry delivery/completion.
+The console must independently check its own expectation, current key and native
+association in the same transaction. Resolution commits its audit atomically and
+retains the original uncertainty receipt, ordinal and proof. It does not retry
+the mutation or turn an invalid/unavailable proof into success.
 Native escrow must already be active because a process can fail after the OS
 changes a key but before its encrypted receipt is persisted. Endpoint execution,
-uncertainty resolution and physical-device acceptance remain separate work.
+console integration and physical-device acceptance remain separate work.
 
 ## Validation
 
@@ -133,5 +145,8 @@ strict wire decoding and fuzz seeds. PostgreSQL race tests cover concurrent poll
 atomic audit rollback, immutable receipts, ordinal limits, conflicting validation,
 recipient replacement, revocation, lock-wait certificate expiry, late returned
 keys, and a 514-device bounded maintenance test with locked and uncertain rows.
+Resolution tests reject live execution, receipt-free uncertainty, altered stop
+evidence, unfinished/invalid/superseded proofs and changed proof context. They also
+cover caller rollback, audit rollback, retained evidence and subsequent ordinals.
 These tests use synthetic keys and disposable schemas; they execute no device
 commands.

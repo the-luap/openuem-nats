@@ -247,6 +247,10 @@ func (s *AccessStore) HandleRecovery(ctx context.Context, identity Identity, req
 // QueueRecoveryTask must be called inside the console's authorization and
 // canonical Mac transaction. It records only HPKE ciphertext and a nonce hash.
 func (s *AccessStore) QueueRecoveryTask(ctx context.Context, tx *sql.Tx, task enrollment.RecoveryTask, nonceHash string) error {
+	return s.queueRecoveryTask(ctx, tx, task, nonceHash, nil)
+}
+
+func (s *AccessStore) queueRecoveryTask(ctx context.Context, tx *sql.Tx, task enrollment.RecoveryTask, nonceHash string, rotation *enrollment.RotationContext) error {
 	c := task.Context
 	if tx == nil || !task.Valid(time.Now()) || len(nonceHash) != 64 {
 		return ErrDenied
@@ -272,8 +276,16 @@ func (s *AccessStore) QueueRecoveryTask(ctx context.Context, tx *sql.Tx, task en
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_rotation_tasks WHERE device_id=$1 AND status IN ('pending','uncertain'))`, i.AgentID).Scan(&rotations); err != nil {
 			return err
 		}
-		if rotations {
+		if rotations && rotation == nil {
 			return ErrDenied
+		}
+	}
+	if rotation != nil {
+		if !rotations || rotation.Binding.Identity != i || rotation.Binding.RecipientID != r.ID || rotation.Binding.NativeID != c.NativeID || rotation.Binding.TaskID == c.TaskID {
+			return ErrDenied
+		}
+		if _, err = lockUncertainRotation(ctx, tx, *rotation, cert); err != nil {
+			return err
 		}
 	}
 	envelope, err := json.Marshal(task)
@@ -284,6 +296,12 @@ func (s *AccessStore) QueueRecoveryTask(ctx context.Context, tx *sql.Tx, task en
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO uem_agent_recovery_tasks(id,tenant_id,site_id,device_id,native_id,key_id,recipient_id,certificate_hash,nonce_hash,envelope,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,to_timestamp($11))`, c.TaskID, i.TenantID, i.SiteID, i.AgentID, c.NativeID, c.KeyID, c.RecipientID, i.CertificateHash, nonceHash, envelope, c.ExpiresAt)
+	if err != nil {
+		return err
+	}
+	if rotation != nil {
+		_, err = tx.ExecContext(ctx, `UPDATE uem_agent_rotation_tasks SET resolution_task_id=$2 WHERE id=$1`, rotation.Binding.TaskID, c.TaskID)
+	}
 	return err
 }
 
