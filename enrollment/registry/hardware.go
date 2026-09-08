@@ -36,6 +36,13 @@ func (s *AccessStore) RecordHardware(ctx context.Context, identity Identity, inp
 	if err != nil {
 		return ErrDenied
 	}
+	// A lock wait can outlive the certificate even when no row was updated.
+	// Recheck database time after acquiring the lock; a pre-lock WHERE test
+	// alone does not cover that case under PostgreSQL READ COMMITTED.
+	var current bool
+	if err := tx.QueryRowContext(ctx, `SELECT certificate_expires_at>clock_timestamp() FROM uem_agent_identities WHERE id=$1`, id).Scan(&current); err != nil || !current {
+		return ErrDenied
+	}
 	var changed bool
 	err = tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM uem_agent_hardware WHERE device_id=$1 AND model=$2 AND serial=$3 AND platform_uuid=$4 AND provisioning_udid=$5)`, id, h.Model, h.Serial, h.PlatformUUID, h.ProvisioningUDID).Scan(&changed)
 	if err != nil {

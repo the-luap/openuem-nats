@@ -154,3 +154,31 @@ func TestHardwareEvidenceRechecksPersistedScopeExpiryAndConcurrentRevocation(t *
 		t.Fatal("denied request left evidence", err)
 	}
 }
+
+func TestHardwareCertificateExpiryDuringRowLockWait(t *testing.T) {
+	s := testStore(t)
+	access, identity, h := testMacHardware(t, s, Scope{TenantID: 1, SiteID: 1})
+	if _, err := s.db.Exec(`UPDATE uem_agent_identities SET certificate_expires_at=clock_timestamp()+INTERVAL '200 milliseconds' WHERE id=$1`, identity.ID); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := s.db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var id string
+	if err := tx.QueryRow(`SELECT id FROM uem_agent_identities WHERE id=$1 FOR UPDATE`, identity.ID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- access.RecordHardware(t.Context(), *identity, h) }()
+	// Keep the row unchanged: PostgreSQL need not reevaluate its original
+	// predicate when this lock is released, so the store must check time again.
+	time.Sleep(250 * time.Millisecond)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, ErrDenied) {
+		t.Fatal("certificate expired while waiting but evidence was accepted", err)
+	}
+}
