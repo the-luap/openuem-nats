@@ -516,6 +516,53 @@ func TestRotationDeliveryRechecksShortenedCertificateLifetime(t *testing.T) {
 	}
 }
 
+func TestRotationCallerTransactionOwnsDeliveryReceiptAndAuditCommit(t *testing.T) {
+	f := newRotationFixture(t)
+	task := f.queue(t)
+	if _, err := f.access.HandleRotationInTransaction(t.Context(), nil, *f.identity, f.pollRequest()); !errors.Is(err, ErrDenied) {
+		t.Fatal("missing caller transaction accepted", err)
+	}
+	tx, err := f.s.db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reply, err := f.access.HandleRotationInTransaction(t.Context(), tx, *f.identity, f.pollRequest()); err != nil || reply.Task == nil {
+		tx.Rollback()
+		t.Fatal("transactional delivery failed", err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	var undelivered bool
+	if err = f.s.db.QueryRow(`SELECT delivered_at IS NULL FROM uem_agent_rotation_tasks WHERE id=$1`, task.Context.Binding.TaskID).Scan(&undelivered); err != nil || !undelivered {
+		t.Fatal("delivery escaped caller rollback", err)
+	}
+	if _, err = f.access.HandleRotation(t.Context(), *f.identity, f.pollRequest()); err != nil {
+		t.Fatal(err)
+	}
+	request := f.result(t, task.Context, "rotated")
+	tx, err = f.s.db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.access.HandleRotationInTransaction(t.Context(), tx, *f.identity, request); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	f.state(t, task.Context.Binding.TaskID, "pending", true)
+	var count int
+	if err = f.s.db.QueryRow(`SELECT count(*) FROM uem_agent_audit WHERE action='recovery.rotation.reported'`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("receipt audit escaped caller rollback", count, err)
+	}
+	if _, err = f.access.HandleRotation(t.Context(), *f.identity, request); err != nil {
+		t.Fatal("rolled-back receipt could not be retried", err)
+	}
+	f.state(t, task.Context.Binding.TaskID, "completed", false)
+}
+
 func TestRotationMaintenanceBoundsSkipsLockedAndDoesNotStarve(t *testing.T) {
 	f := newRotationFixture(t)
 	completed := f.queue(t)

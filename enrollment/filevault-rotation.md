@@ -44,6 +44,11 @@ must verify current authority and that independent expectation before invoking
 `OpenRotationResult`. The decryption method checks context, nonce digest, signing
 certificate, signature, return recipient and the decrypted nonce.
 
+`HandleRotationInTransaction` lets a worker retain its inventory-scope locks in
+the same transaction as registry delivery, receipt storage and audit. That caller
+must use the same database, roll back any error and commit before replying.
+The ordinary `HandleRotation` wrapper owns and commits its own transaction.
+
 `RotationSecret` exposes borrowed byte slices and has no JSON representation.
 Call `Close` promptly to clear them. Do not log PRKs, place them in command
 arguments or environment variables, or retain them in a journal. A journal may

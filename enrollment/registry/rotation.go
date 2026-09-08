@@ -101,6 +101,31 @@ func (s *AccessStore) QueueRotationTask(ctx context.Context, tx *sql.Tx, task en
 // registration. A late signed receipt is useful even after its mutation deadline;
 // it is accepted only for a task delivered under this exact current identity.
 func (s *AccessStore) HandleRotation(ctx context.Context, identity Identity, request enrollment.RotationRequest) (*enrollment.RotationReply, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	reply, err := s.HandleRotationInTransaction(ctx, tx, identity, request)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+// HandleRotationInTransaction retains task/identity locks in the caller's
+// transaction. Workers use this to hold their inventory scope authorization
+// through the same delivery/result commit. The caller must roll back on error
+// and commit successfully before returning any reply to the endpoint.
+func (s *AccessStore) HandleRotationInTransaction(ctx context.Context, tx *sql.Tx, identity Identity, request enrollment.RotationRequest) (*enrollment.RotationReply, error) {
+	if tx == nil {
+		return nil, ErrDenied
+	}
 	if identity.Platform != "macos" || request.AgentID != identity.ID {
 		return nil, ErrDenied
 	}
@@ -113,11 +138,6 @@ func (s *AccessStore) HandleRotation(ctx context.Context, identity Identity, req
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 	i, cert, err := rotationIdentity(ctx, tx, identity.Scope, identity.ID)
 	if err != nil {
 		return nil, err
@@ -229,9 +249,6 @@ func (s *AccessStore) HandleRotation(ctx context.Context, identity Identity, req
 		}
 	default:
 		return nil, ErrDenied
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, err
 	}
 	return reply, nil
 }
