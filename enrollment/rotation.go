@@ -18,6 +18,10 @@ const RotationProtocol = "filevault-rotation"
 const MaxRotationAttempts = 128
 const RotationTaskLifetime = 15 * time.Minute
 
+// RotationReceiptGrace reserves time for signing and durable encrypted receipt
+// publication before the current enrollment certificate expires.
+const RotationReceiptGrace = 2 * time.Minute
+
 // RotationContext binds a mutation to one key version, a confirmed escrow
 // destination and an immutable local journal slot. ReplyKey is a separate,
 // per-attempt console X25519 recipient, encoded as canonical lower-case hex.

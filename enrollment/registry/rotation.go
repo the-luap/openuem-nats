@@ -71,7 +71,7 @@ func (s *AccessStore) QueueRotationTask(ctx context.Context, tx *sql.Tx, task en
 		return ErrDenied
 	}
 	i, cert, err := rotationIdentity(ctx, tx, Scope{TenantID: b.Identity.TenantID, SiteID: b.Identity.SiteID}, b.Identity.AgentID)
-	if err != nil || i != b.Identity || time.Unix(b.ExpiresAt, 0).After(cert.NotAfter) {
+	if err != nil || i != b.Identity || time.Unix(b.ExpiresAt, 0).Add(enrollment.RotationReceiptGrace).After(cert.NotAfter) {
 		return ErrDenied
 	}
 	r, err := recoveryRecipient(ctx, tx, i)
@@ -87,7 +87,7 @@ func (s *AccessStore) QueueRotationTask(ctx context.Context, tx *sql.Tx, task en
 		return ErrDenied
 	}
 	var withinLifetime bool
-	if err = tx.QueryRowContext(ctx, `SELECT certificate_expires_at>=to_timestamp($2) AND certificate_expires_at>clock_timestamp() FROM uem_agent_identities WHERE id=$1`, i.AgentID, b.ExpiresAt).Scan(&withinLifetime); err != nil || !withinLifetime || !task.Valid(time.Now()) {
+	if err = tx.QueryRowContext(ctx, `SELECT certificate_expires_at>=to_timestamp($2) AND certificate_expires_at>clock_timestamp() FROM uem_agent_identities WHERE id=$1`, i.AgentID, b.ExpiresAt+int64(enrollment.RotationReceiptGrace/time.Second)).Scan(&withinLifetime); err != nil || !withinLifetime || !task.Valid(time.Now()) {
 		return ErrDenied
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE uem_agent_recovery_tasks SET status='cancelled',envelope='\x',completed_at=clock_timestamp() WHERE device_id=$1 AND status='pending'`, i.AgentID); err != nil {

@@ -7,6 +7,9 @@ worker subscriber and console escrow workflow must be integrated separately
 before enabling rotation. Existing FileVault validation uses its unchanged v1
 protocol and remains a read-only operation.
 
+The optional agent configuration field `rotation_task_version` negotiates this
+separate capability. Absence or an unsupported version cannot enable execution.
+
 ## Protocol boundaries
 
 Rotation uses the individual agent's `rotation` request subject. Every request and
@@ -61,6 +64,13 @@ ciphertext. Pending or uncertain rotation blocks another rotation and ordinary
 validation. The console must separately enforce device-security permission,
 canonical Mac association, current validated source PRK, a confirmed active
 native escrow profile, recent native evidence and its audit transaction.
+
+The queued mutation deadline must leave at least `RotationReceiptGrace` (two
+minutes) before both the parsed certificate and registry certificate lifetime
+expire. The endpoint must independently reserve the same grace. Signing and
+durable publication happen while the certificate is still valid, even when an
+OS operation consumes its entire execution deadline. This reserve does not make
+OS mutation and native keychain writes atomic or remove the native escrow fallback.
 
 | Event | Stored status | Delivery behavior |
 | --- | --- | --- |

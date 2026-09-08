@@ -454,6 +454,46 @@ func TestRotationExpiryDuringIdentityAndTaskLockWaits(t *testing.T) {
 	}
 }
 
+func TestRotationQueueReservesTimeForDurableReceiptPublication(t *testing.T) {
+	f := newRotationFixture(t)
+	template := f.queue(t)
+	if _, err := f.s.db.Exec(`UPDATE uem_agent_rotation_tasks SET status='cancelled',envelope='\x' WHERE id=$1`, template.Context.Binding.TaskID); err != nil {
+		t.Fatal(err)
+	}
+	c := template.Context
+	c.Ordinal++
+	c.Binding.TaskID = uuid.NewString()
+	c.Binding.ExpiresAt = time.Now().Add(time.Minute).Unix()
+	task, err := enrollment.EncryptRotationTask(*f.recipient, c, []byte("AAAA-BBBB-CCCC-DDDD-EEEE-FFFF"), f.nonce, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seconds := range []int64{int64(enrollment.RotationReceiptGrace/time.Second) - 1, int64(enrollment.RotationReceiptGrace / time.Second)} {
+		if _, err = f.s.db.Exec(`UPDATE uem_agent_identities SET certificate_expires_at=to_timestamp($2) WHERE id=$1`, f.identity.ID, c.Binding.ExpiresAt+seconds); err != nil {
+			t.Fatal(err)
+		}
+		tx, err := f.s.db.BeginTx(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.access.QueueRotationTask(t.Context(), tx, *task, digest(f.nonce))
+		if seconds < int64(enrollment.RotationReceiptGrace/time.Second) {
+			tx.Rollback()
+			if !errors.Is(err, ErrDenied) {
+				t.Fatal("rotation consumed its receipt-publication reserve", err)
+			}
+		} else {
+			if err != nil {
+				tx.Rollback()
+				t.Fatal("sufficient publication reserve rejected", err)
+			}
+			if err = tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 func TestRotationMaintenanceBoundsSkipsLockedAndDoesNotStarve(t *testing.T) {
 	f := newRotationFixture(t)
 	completed := f.queue(t)
