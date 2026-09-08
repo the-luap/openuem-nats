@@ -41,6 +41,9 @@ func uniqueValue(decoder *json.Decoder, depth int) error {
 	if err != nil {
 		return err
 	}
+	if token == nil {
+		return ErrInvalid
+	}
 	delimiter, ok := token.(json.Delim)
 	if !ok {
 		return nil

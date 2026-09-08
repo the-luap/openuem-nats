@@ -26,13 +26,14 @@ const (
 )
 
 var (
-	ErrInvalid     = errors.New("invalid installer release")
-	ErrUntrusted   = errors.New("installer release signature is not trusted")
-	ErrExpired     = errors.New("installer release is not currently valid")
-	ErrRollback    = errors.New("installer release is older than the accepted sequence")
-	ErrTarget      = errors.New("installer release does not support this target")
-	ErrPackage     = errors.New("installer content does not match the approved release")
-	versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(-(alpha|beta|rc)\.(0|[1-9][0-9]{0,8}))?$`)
+	ErrInvalid      = errors.New("invalid installer release")
+	ErrUntrusted    = errors.New("installer release signature is not trusted")
+	ErrExpired      = errors.New("installer release is not currently valid")
+	ErrRollback     = errors.New("installer release is older than the accepted sequence")
+	ErrTarget       = errors.New("installer release does not support this target")
+	ErrPackage      = errors.New("installer content does not match the approved release")
+	ErrAgentBinding = errors.New("the installed agent does not match the approved release")
+	versionPattern  = regexp.MustCompile(`^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(-(alpha|beta|rc)\.(0|[1-9][0-9]{0,8}))?$`)
 )
 
 // Manifest approves one immutable installer for each supported platform/CPU
@@ -54,6 +55,11 @@ type Artifact struct {
 	Filename     string `json:"filename"`
 	Size         int64  `json:"size"`
 	SHA256       string `json:"sha256"`
+	// AgentSize and AgentSHA256 bind the final signed agent executable contained
+	// in the installer. Preview manifests may omit both; they cannot authorize
+	// an installed agent through VerifyAgent. No circular package hash is embedded.
+	AgentSize   int64  `json:"agent_size,omitempty"`
+	AgentSHA256 string `json:"agent_sha256,omitempty"`
 }
 
 type envelope struct {
@@ -149,6 +155,34 @@ func (v *Verified) VerifyPackage(platform, architecture string, r io.Reader) err
 	want, _ := hex.DecodeString(item.SHA256)
 	if subtle.ConstantTimeCompare(hash.Sum(nil), want) != 1 {
 		return ErrPackage
+	}
+	return nil
+}
+
+// VerifyAgent checks the exact installed executable independently of the package
+// wrapper. The release pipeline hashes the final signed executable before packaging
+// it, then hashes the final installer. Missing executable binding fails closed.
+// Callers still check native signatures, the actual executable path/identity,
+// current release lifetime and the latest checkpoint before enrollment/activation.
+func (v *Verified) VerifyAgent(platform, architecture string, r io.Reader) error {
+	if v == nil {
+		return ErrAgentBinding
+	}
+	item, err := v.Select(platform, architecture)
+	if err != nil {
+		return err
+	}
+	if r == nil || item.AgentSize <= 0 || item.AgentSize > MaxPackageSize || item.AgentSHA256 == "" {
+		return ErrAgentBinding
+	}
+	hash := sha256.New()
+	n, err := io.Copy(hash, io.LimitReader(r, item.AgentSize+1))
+	if err != nil || n != item.AgentSize {
+		return ErrAgentBinding
+	}
+	want, err := hex.DecodeString(item.AgentSHA256)
+	if err != nil || len(want) != sha256.Size || subtle.ConstantTimeCompare(hash.Sum(nil), want) != 1 {
+		return ErrAgentBinding
 	}
 	return nil
 }
@@ -265,6 +299,12 @@ func validate(m Manifest, now time.Time, minimumSequence uint64) error {
 		digest, err := hex.DecodeString(item.SHA256)
 		if err != nil || len(digest) != sha256.Size || hex.EncodeToString(digest) != item.SHA256 {
 			return ErrInvalid
+		}
+		if item.AgentSize != 0 || item.AgentSHA256 != "" {
+			digest, err := hex.DecodeString(item.AgentSHA256)
+			if item.AgentSize <= 0 || item.AgentSize > MaxPackageSize || err != nil || len(digest) != sha256.Size || hex.EncodeToString(digest) != item.AgentSHA256 {
+				return ErrInvalid
+			}
 		}
 		target := item.Platform + "/" + item.Architecture
 		if targets[target] {

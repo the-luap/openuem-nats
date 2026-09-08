@@ -106,6 +106,15 @@ func (v *Verified) ReleaseVersion() string { return v.release.Manifest().Version
 func (v *Verified) VerifyPackage(reader io.Reader) error {
 	return v.release.VerifyPackage(v.config.Platform, v.config.Architecture, reader)
 }
+
+// VerifyAgent checks this release target's separately signed executable binding.
+// Preview manifests without that binding cannot authorize installed-agent bytes.
+func (v *Verified) VerifyAgent(reader io.Reader) error {
+	if v == nil || v.release == nil {
+		return ErrInvalid
+	}
+	return v.release.VerifyAgent(v.config.Platform, v.config.Architecture, reader)
+}
 func (v *Verified) DownloadURL() string {
 	return v.config.Origin + "/enroll/desktop/releases/" + v.config.ReleaseDigest + "/" + v.config.Platform + "/" + v.config.Architecture
 }

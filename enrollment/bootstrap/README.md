@@ -62,6 +62,12 @@ checkpoint remain mandatory. The shared `keyfile.Open` helper checks a protected
 regular file and returns its owned read-only descriptor for bounded streaming;
 keep ancestors protected and avoid replacing the file between checks and use.
 
+`Verified.VerifyAgent` checks the release's separate `agent_size`/`agent_sha256`
+binding against actual installed executable bytes. Installer verification alone
+does not prove which executable is installed. Manifests that omit this binding
+cannot pass the executable check. The native command must connect it to the
+installed agent's verified file identity before claiming or activating enrollment.
+
 `Verified` keeps authenticated values private and returns copies. Before use,
 recheck `ValidAt` against current time and the latest durable checkpoint. Verify
 actual package bytes through `VerifyPackage` without reopening a replaceable path;
