@@ -221,7 +221,7 @@ func TestRotationWireRejectsAmbiguityAndInvalidBounds(t *testing.T) {
 	if _, err := DecodeRotationRequest(encoded); err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range [][]byte{append(encoded, '\n'), bytes.Replace(encoded, []byte(`"version":1`), []byte(`"version":1,"version":1`), 1), bytes.Replace(encoded, []byte(`"version":1`), []byte(`"version":2`), 1), bytes.Replace(encoded, []byte(`"version":1`), []byte(`"unexpected":true,"version":1`), 1), bytes.Repeat([]byte("a"), MaxRecoveryMessage+1)} {
+	for _, bad := range [][]byte{append(encoded, '\n'), bytes.Replace(encoded, []byte(`"version":2`), []byte(`"version":2,"version":2`), 1), bytes.Replace(encoded, []byte(`"version":2`), []byte(`"version":1`), 1), bytes.Replace(encoded, []byte(`"version":2`), []byte(`"unexpected":true,"version":2`), 1), bytes.Repeat([]byte("a"), MaxRecoveryMessage+1)} {
 		if _, err := DecodeRotationRequest(bad); err == nil {
 			t.Fatal("ambiguous rotation request")
 		}
@@ -304,6 +304,35 @@ func TestRotationReplySeparatesLiveTasksFromLateReceiptRequests(t *testing.T) {
 		wire, _ := json.Marshal(r)
 		if _, err = DecodeRotationReply(wire, time.Now()); err == nil {
 			t.Fatal("invalid rotation reply accepted")
+		}
+	}
+}
+
+func TestRotationStoppingEvidenceIsSignedAndRequiresVersionTwo(t *testing.T) {
+	identity, cert, signer := testRecoveryIdentity(t)
+	c, _, _ := testRotationKeys(t, identity)
+	nonce := bytes.Repeat([]byte{8}, 32)
+	result, err := NewStoppedRotationResult(c, nonce, cert, signer, time.Now())
+	if err != nil || !result.ExecutionStopped || VerifyRotationResult(*result, cert, time.Now()) != nil {
+		t.Fatal("stopping evidence not authenticated", err)
+	}
+	result.ExecutionStopped = false
+	if VerifyRotationResult(*result, cert, time.Now()) == nil {
+		t.Fatal("removed stopping evidence retained a valid signature")
+	}
+	plain, err := NewRotationResult(c, "uncertain", nonce, nil, cert, signer, time.Now())
+	if err != nil || plain.ExecutionStopped {
+		t.Fatal("legacy uncertainty became stopping proof", err)
+	}
+	plain.ExecutionStopped = true
+	if VerifyRotationResult(*plain, cert, time.Now()) == nil {
+		t.Fatal("unsigned stopping claim accepted")
+	}
+	for _, version := range []int{0, 1, 2, 3} {
+		wire, _ := json.Marshal(RotationRequest{Version: version, Protocol: RotationProtocol, AgentID: identity.AgentID, Action: "poll", RecipientID: c.Binding.RecipientID})
+		_, err := DecodeRotationRequest(wire)
+		if (err == nil) != (version == 2) {
+			t.Fatal("wrong rotation capability version", version, err)
 		}
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const RotationVersion = 1
+const RotationVersion = 2
 const RotationProtocol = "filevault-rotation"
 const MaxRotationAttempts = 128
 const RotationTaskLifetime = 15 * time.Minute
@@ -70,11 +70,14 @@ func (t RotationTask) Valid(now time.Time) bool { return t.Context.Valid(now) &&
 // "uncertain" means an admitted mutation has no recoverable output; it must not
 // be retried automatically. Native MDM escrow remains the recovery fallback.
 type RotationResult struct {
-	Context   RotationContext   `json:"context"`
-	Outcome   string            `json:"outcome"`
-	Nonce     []byte            `json:"nonce"`
-	NewKey    *RotationEnvelope `json:"new_key,omitempty"`
-	Signature []byte            `json:"signature"`
+	Context RotationContext `json:"context"`
+	Outcome string          `json:"outcome"`
+	// ExecutionStopped is an authenticated stopping proof for uncertainty, not
+	// a conclusion inferred from agent restart, deadline expiry or a free lease.
+	ExecutionStopped bool              `json:"execution_stopped,omitempty"`
+	Nonce            []byte            `json:"nonce"`
+	NewKey           *RotationEnvelope `json:"new_key,omitempty"`
+	Signature        []byte            `json:"signature"`
 }
 
 func rotationOutcome(value string) bool {
@@ -82,7 +85,7 @@ func rotationOutcome(value string) bool {
 }
 
 func (r RotationResult) Valid() bool {
-	if !r.Context.ValidReceipt() || !rotationOutcome(r.Outcome) || len(r.Nonce) != 32 || len(r.Signature) < 384 || len(r.Signature) > 512 {
+	if !r.Context.ValidReceipt() || !rotationOutcome(r.Outcome) || (r.ExecutionStopped && r.Outcome != "uncertain") || len(r.Nonce) != 32 || len(r.Signature) < 384 || len(r.Signature) > 512 {
 		return false
 	}
 	withKey := r.Outcome == "rotated" || r.Outcome == "unverified"
@@ -234,10 +237,22 @@ func (k *RecoveryRecipientKey) OpenRotationTask(t RotationTask, identity Recover
 }
 
 func NewRotationResult(c RotationContext, outcome string, nonce, newKey []byte, certificate *x509.Certificate, signer *rsa.PrivateKey, now time.Time) (*RotationResult, error) {
+	return newRotationResult(c, outcome, nonce, newKey, false, certificate, signer, now)
+}
+
+// NewStoppedRotationResult is only for callers that observed the mutation
+// process terminate, or proved a different kernel boot session from admission.
+// Acquiring an agent process lease after a crash is insufficient: an orphaned
+// command can outlive its parent. The stopping evidence is part of the signature.
+func NewStoppedRotationResult(c RotationContext, nonce []byte, certificate *x509.Certificate, signer *rsa.PrivateKey, now time.Time) (*RotationResult, error) {
+	return newRotationResult(c, "uncertain", nonce, nil, true, certificate, signer, now)
+}
+
+func newRotationResult(c RotationContext, outcome string, nonce, newKey []byte, stopped bool, certificate *x509.Certificate, signer *rsa.PrivateKey, now time.Time) (*RotationResult, error) {
 	if !c.ValidReceipt() || !rotationOutcome(outcome) || len(nonce) != 32 {
 		return nil, ErrRecovery
 	}
-	r := &RotationResult{Context: c, Outcome: outcome, Nonce: bytes.Clone(nonce)}
+	r := &RotationResult{Context: c, Outcome: outcome, ExecutionStopped: stopped, Nonce: bytes.Clone(nonce)}
 	if outcome == "rotated" || outcome == "unverified" {
 		public, _ := hex.DecodeString(c.ReplyKey)
 		var err error

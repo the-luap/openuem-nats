@@ -67,7 +67,7 @@ func TestRotationResolutionRequiresStoppedExecutionAndSelectedValidProof(t *test
 	if err := queue(proof, true); !errors.Is(err, ErrDenied) {
 		t.Fatal("receipt-free uncertainty admitted resolution", err)
 	}
-	uncertain := f.result(t, rotation.Context, "uncertain")
+	uncertain := f.stoppedResult(t, rotation.Context)
 	if _, err := f.access.HandleRotation(t.Context(), *f.identity, uncertain); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestRotationResolutionRejectsAlteredStopEvidence(t *testing.T) {
 	if _, err := f.access.HandleRotation(t.Context(), *f.identity, f.pollRequest()); err != nil {
 		t.Fatal(err)
 	}
-	request := f.result(t, rotation.Context, "uncertain")
+	request := f.stoppedResult(t, rotation.Context)
 	if _, err := f.access.HandleRotation(t.Context(), *f.identity, request); err != nil {
 		t.Fatal(err)
 	}
@@ -186,6 +186,7 @@ func TestRotationResolutionRejectsAlteredStopEvidence(t *testing.T) {
 		func(r *enrollment.RotationResult) { r.Context.EscrowID = uuid.NewString() },
 		func(r *enrollment.RotationResult) { r.Nonce = bytes.Repeat([]byte{9}, 32) },
 		func(r *enrollment.RotationResult) { r.Signature[0] ^= 1 },
+		func(r *enrollment.RotationResult) { r.ExecutionStopped = false },
 	} {
 		original, _ := json.Marshal(request.Result)
 		var invalid enrollment.RotationResult
@@ -206,5 +207,43 @@ func TestRotationResolutionRejectsAlteredStopEvidence(t *testing.T) {
 		if !errors.Is(err, ErrDenied) {
 			t.Fatal("altered stop evidence admitted proof", err)
 		}
+	}
+}
+
+func (f *rotationFixture) stoppedResult(t *testing.T, c enrollment.RotationContext) enrollment.RotationRequest {
+	t.Helper()
+	result, err := enrollment.NewStoppedRotationResult(c, f.nonce, f.cert, f.signer, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return enrollment.RotationRequest{Version: enrollment.RotationVersion, Protocol: enrollment.RotationProtocol, AgentID: f.identity.ID, Action: "result", Result: result}
+}
+
+func TestRotationUncertaintyWithoutStoppingEvidenceCannotAdmitResolution(t *testing.T) {
+	f := newRotationFixture(t)
+	task := f.queue(t)
+	if _, err := f.access.HandleRotation(t.Context(), *f.identity, f.pollRequest()); err != nil {
+		t.Fatal(err)
+	}
+	uncertain := f.result(t, task.Context, "uncertain")
+	if uncertain.Result.ExecutionStopped {
+		t.Fatal("ordinary uncertainty gained stopping evidence")
+	}
+	if _, err := f.access.HandleRotation(t.Context(), *f.identity, uncertain); err != nil {
+		t.Fatal(err)
+	}
+	proof := task.Context.Binding
+	proof.TaskID, proof.ExpiresAt = uuid.NewString(), time.Now().Add(time.Minute).Unix()
+	check, err := enrollment.EncryptRecoveryTask(*f.recipient, proof, []byte("AAAA-BBBB-CCCC-DDDD-EEEE-FFFF"), f.nonce, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := f.s.db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err = f.access.QueueRotationValidation(t.Context(), tx, task.Context, *check, digest(f.nonce)); !errors.Is(err, ErrDenied) {
+		t.Fatal("a crash receipt authorized old-key resolution", err)
 	}
 }

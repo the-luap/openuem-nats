@@ -7,13 +7,13 @@ worker subscriber and console escrow workflow must be integrated separately
 before enabling rotation. Existing FileVault validation uses its unchanged v1
 protocol and remains a read-only operation.
 
-The optional agent configuration field `rotation_task_version` negotiates this
+The optional agent configuration field `rotation_task_version: 2` negotiates this
 separate capability. Absence or an unsupported version cannot enable execution.
 
 ## Protocol boundaries
 
 Rotation uses the individual agent's `rotation` request subject. Every request and
-reply includes `version: 1` and `protocol: "filevault-rotation"`. Receivers reject
+reply includes `version: 2` and `protocol: "filevault-rotation"`. Receivers reject
 unknown fields, duplicate fields, noncanonical JSON, oversized messages and other
 protocols' acknowledgements. The worker must authenticate the subject, active
 identity, organization/site, body agent ID and private reply prefix before calling
@@ -113,17 +113,19 @@ Before invoking an OS mutation, an endpoint must durably create an immutable
 intent under the exact identity, ordinal, context and nonce. Once that intent
 exists, a task retry or process restart must never execute the mutation again.
 Persist the signed encrypted outcome before transmitting it. An intent without a
-recoverable outcome must produce uncertainty and invoke the independent native
-escrow recovery workflow. The attempt bound allows a fixed-size protected journal
+recoverable outcome must never be replayed. During the same kernel boot, a freed
+parent lease does not exclude a surviving command. Wait for recorded process
+termination or a different boot session before signing stopping evidence; keep
+the independent native escrow recovery workflow available. The attempt bound allows a fixed-size protected journal
 without deleting replay-prevention evidence.
 
 The console must preserve all previously escrowed keys, reconcile a returned key
 with any newer native escrow response, and avoid overwriting a newer unrelated
 key. An uncertain attempt requires independent proof of the current key before
 being resolved. Migration 006 adds explicit, caller-authorized recovery APIs:
-`QueueRotationValidation` requires the exact signed uncertainty receipt before
-admitting a read-only validation task. Deadline expiry without a receipt remains
-blocked. The selected proof is bound to this rotation, identity, recipient and
+`QueueRotationValidation` requires the exact signed uncertainty receipt with
+`execution_stopped: true` before admitting a read-only validation task. Deadline
+expiry or uncertainty without stopping evidence remains blocked. The selected proof is bound to this rotation, identity, recipient and
 native Mac; replacing the proof cancels its pending predecessor. Ordinary validation
 and another mutation remain blocked while this recovery runs.
 
@@ -150,3 +152,22 @@ evidence, unfinished/invalid/superseded proofs and changed proof context. They a
 cover caller rollback, audit rollback, retained evidence and subsequent ordinals.
 These tests use synthetic keys and disposable schemas; they execute no device
 commands.
+
+## Version 2 stopping evidence
+
+Version 2 is required for rotation capability negotiation and request/reply
+messages. The encrypted task context and domain bindings remain compatible with
+stored records. This permits receipt recovery without upgrading a version 1
+uncertainty claim into proof that execution stopped. The optional signed
+`execution_stopped` field is valid only on an `uncertain` result; it must be true
+before `QueueRotationValidation` or `ResolveRotation` can admit an old-key check
+as a resolution. Removing or adding this field invalidates the signature.
+
+An agent process lease alone does not prove that a previously launched command
+stopped: the command can outlive the parent and its descriptor. The updated agent
+records the kernel boot-session UUID in its immutable admission record. It signs
+stopping evidence only after reaping its exact mutation process or after observing
+a different boot session from that record. After a crash during the same boot,
+intent-only recovery waits and never reruns the mutation. New agents and workers
+must both negotiate version 2. Legacy uncertainty receipts remain readable and
+immutable but do not authorize automatic resolution.

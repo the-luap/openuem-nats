@@ -13,7 +13,7 @@ import (
 )
 
 // QueueRotationValidation admits only read-only validation after the endpoint's
-// immutable signed uncertainty receipt proves that its leased execution ended.
+// immutable signed uncertainty receipt explicitly proves execution stopped.
 // An elapsed deadline without that receipt never admits this recovery path.
 // The console must independently authorize the native Mac and current key in tx.
 func (s *AccessStore) QueueRotationValidation(ctx context.Context, tx *sql.Tx, rotation enrollment.RotationContext, task enrollment.RecoveryTask, nonceHash string) error {
@@ -41,7 +41,7 @@ func lockUncertainRotation(ctx context.Context, tx *sql.Tx, c enrollment.Rotatio
 		return "", ErrDenied
 	}
 	canonical, _ = json.Marshal(receipt)
-	if !bytes.Equal(canonical, wire) || receipt.Context != c || receipt.Outcome != "uncertain" || subtle.ConstantTimeCompare([]byte(digest(receipt.Nonce)), []byte(nonceHash)) != 1 || enrollment.VerifyRotationResult(receipt, cert, time.Now()) != nil {
+	if !bytes.Equal(canonical, wire) || receipt.Context != c || receipt.Outcome != "uncertain" || !receipt.ExecutionStopped || subtle.ConstantTimeCompare([]byte(digest(receipt.Nonce)), []byte(nonceHash)) != 1 || enrollment.VerifyRotationResult(receipt, cert, time.Now()) != nil {
 		return "", ErrDenied
 	}
 	return proof, nil
