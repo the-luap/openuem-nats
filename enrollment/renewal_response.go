@@ -112,7 +112,7 @@ func ValidateConfirmedIdentityRenewal(r ConfirmedIdentityRenewal, request Renewa
 }
 
 func IdentityRenewalPath(deviceID, operation string) string {
-	if !ValidDeviceID(deviceID) || (operation != "prepare" && operation != "confirm") {
+	if !ValidDeviceID(deviceID) || (operation != "prepare" && operation != "confirm" && operation != "resolve") {
 		return ""
 	}
 	return "/enroll/desktop/identities/" + deviceID + "/renewal/" + operation

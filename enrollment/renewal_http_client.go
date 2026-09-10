@@ -98,3 +98,36 @@ func (c *HTTPClient) identityRenewalJSON(ctx context.Context, path string, body 
 	}
 	return data, nil
 }
+
+// ResolveIdentityRenewal performs one explicitly requested atomic resolution. A
+// cancelled outcome permanently disables the candidate on the server; confirmed
+// recovers prior activation. Errors, cancellation and unavailable endpoints never
+// authorize fallback. Persist the verified outcome before changing local state.
+func (c *HTTPClient) ResolveIdentityRenewal(ctx context.Context, request RenewalResolution, target RenewalConfirmationTarget, source RenewalSource) (*ResolvedIdentityRenewal, error) {
+	if c == nil || ctx == nil || source.Origin != c.origin || target.Candidate.Origin != c.origin {
+		return nil, ErrRenewalResolution
+	}
+	if err := ValidateRenewalResolution(request, target, time.Now()); err != nil {
+		return nil, err
+	}
+	if renewalResolutionSource(target, source) != nil {
+		return nil, ErrRenewalResolution
+	}
+	body, err := json.Marshal(request)
+	if err != nil || len(body) > MaxRenewalResolutionBytes {
+		return nil, ErrRenewalResolution
+	}
+	data, err := c.identityRenewalJSON(ctx, IdentityRenewalPath(request.DeviceID, "resolve"), body, MaxResolvedIdentityRenewalBytes)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(data)
+	response, err := DecodeResolvedIdentityRenewal(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateResolvedIdentityRenewal(*response, request, target, source, time.Now()); err != nil {
+		return nil, err
+	}
+	return response, nil
+}

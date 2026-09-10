@@ -56,7 +56,7 @@ for their original device, backfilling existing enrollments. An identity trigger
 also protects claims by older registry clients. Pending, expired and retired keys
 cannot be assigned to another device; the same device may retain its own keys.
 
-Only one unexpired preparation for the current source is admitted. Preparation
+Only one unexpired, uncancelled preparation for the current source is admitted. Preparation
 lasts at most 168 elapsed hours, bounded by source expiry, independently of the
 database session timezone. A fresh proof for the same request ID and semantic
 intent returns the exact committed issuance. An expired request ID cannot be
@@ -130,11 +130,51 @@ and historical ordinals remain. The endpoint must register a new server recipien
 epoch before new recovery work. The original endpoint installation/replay anchor
 and local recipient key must survive this certificate transition.
 
-## Remaining application integration
+## Authoritative resolution of uncertain confirmation
+
+`NewRenewalResolution` proves possession of both candidate keys against the same
+retained target, using a distinct protocol and signature domain. Its 8 KiB strict
+wire grammar and freshness bounds match confirmation. Neither preparation nor
+activation signatures can authorize resolution, even when relabelled.
+
+`registry.Store.ResolveIdentityRenewal` locks the current identity and returns one
+immutable outcome. If that exact candidate was already confirmed and remains
+current, valid and authorized, `confirmed` recovers its original activation time.
+Otherwise, while the original source is still current, valid and authorized,
+`cancelled` permanently disables that candidate and retains the original keys.
+Cancellation is allowed before or after preparation expiry, so unresolved recovery
+work can be reconciled with the still-valid original certificate. Revocation,
+source expiry or a different current generation never grants fallback.
+
+Migration 010 stores device/request-bound AES-GCM cancellation evidence and exact
+source/candidate hash indexes. Cancellation and audit commit atomically. Every
+retry authenticates retained evidence and returns its original timestamp; dual
+confirmation/cancellation records fail closed. Cancelled preparations cannot be
+replayed or activated, but an authenticated cancellation releases the pending
+block for a distinct signed preparation. All candidate key reservations remain.
+
+Database triggers also reject cancelled-certificate activation by older server
+versions and prevent contradictory insertions. The cancellation trigger serializes
+on the identity and publishes a new MVCC row version with identical field values,
+without firing credential/scope/recovery/consumer transitions. Thus waiting older
+transactions using READ COMMITTED, REPEATABLE READ or SERIALIZABLE cannot activate
+against a stale pre-cancellation snapshot. The device, sessions, recipient, tasks,
+receipts, enrollment usage and permanent key ownership remain unchanged.
+
+`HTTPClient.ResolveIdentityRenewal` performs one explicit POST to the corresponding
+`/resolve` route. Its strict 2 KiB `ResolvedIdentityRenewal` response binds version,
+request/device IDs, exact source/candidate hashes, outcome and original commit time.
+The client checks the trusted original source independently, including historical
+source validity when recovering activation after source expiry. Endpoint code must
+persist the verified outcome and recheck the selected certificate at use time.
+Errors, timeouts, 404, preparation expiry and a lost resolution reply grant no
+permission to abandon a confirmation decision or resume old credentials.
+
+## Application integration
 
 ### Native HTTPS client contract
 
-Public `PreparedIdentityRenewal` and `ConfirmedIdentityRenewal` response types now
+Public `PreparedIdentityRenewal`, `ConfirmedIdentityRenewal` and `ResolvedIdentityRenewal` response types
 live in `enrollment`; the registry retains aliases. Endpoint code can use the wire
 contract without importing the database/issuer package. Bounded strict decoders
 reject duplicate/unknown/case-aliased fields, nulls, malformed UTF-8 and trailing
@@ -160,11 +200,12 @@ authorize discarding a confirmation intent or falling back to old keys.
 
 ### Application and endpoint lifecycle
 
-This is a tested shared registry component, not automatic endpoint renewal. Before
-exposing it, integrate authenticated HTTPS/gateway routing and rate limits, console
-key-processing acknowledgements and recovery reconciliation, native protected
-candidate storage/activation journals, lost-commit-acknowledgement recovery, broker
-runtime reconnect, scheduling and pinned service/agent release dependencies.
+The console already integrates prepare/confirm routing, rate limits and key
+processing acknowledgements; the agent retains protected candidate/activation
+journals. Resolution additionally requires its matching gateway route and durable
+native outcome record before old credentials can be recovered. Automatic endpoint
+renewal still requires runtime quiescence/reconnect, scheduling and pinned
+service/agent release dependencies.
 Original enrollment anchors and immutable endpoint execution history must survive
 all generations. Exercise reconnect/restart/renewal on physical Windows/macOS
 endpoints separately. CA/master-key rotation and operational history-capacity
@@ -214,5 +255,21 @@ root broker **9.091 seconds**). Response fuzzing passes **459,737 executions** i
 **31.111 seconds**; Vet and complete Linux/Windows builds pass. These checks cover
 response substitution, HTTP/2, exact proof transmission, unsafe media/encodings,
 redirects, untrusted TLS, typed conflicts and cancellation without implicit retry.
-The client contract still requires the matching console/gateway route integration
-and protected endpoint lifecycle before automatic renewal is enabled.
+That transport baseline is integrated by console `3a49b79` and protected agent
+journal `4b782a1`; automatic renewal still requires its runtime lifecycle.
+
+The resolution library race suite passes (enrollment **23.341 seconds**, registry
+**44.273 seconds**, root broker **9.520 seconds**). Additional isolation/retention
+race tests pass in **8.038 seconds** after the MVCC guard was added. They cover
+concurrent activation/cancellation, waiting older writers at all three isolation
+levels, immutable authenticated history and indexes, contradictory records,
+cancel-before/after-preparation-expiry, source-expiry/revocation denial, exact
+post-restart outcomes, new preparations after cancellation, retained FileVault
+work, and complete rollback after audit/proof/clock failures. The current identity
+check now rejects the exact certificate-expiry instant as well.
+
+Resolution-proof fuzzing passes **597,698 executions** in **30.884 seconds**.
+Response fuzzing with an explicit cancellation seed passes **326,915 executions**
+in **15.580 seconds**. Vet, tidy consistency and complete Linux/Windows builds pass.
+All database fixtures use disposable synthetic schemas. No production migration,
+endpoint/provider operation or service deployment is performed by these checks.

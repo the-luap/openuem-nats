@@ -65,6 +65,9 @@ func loadIdentityRenewalCurrent(ctx context.Context, tx *sql.Tx, id string) (*id
 }
 
 func (c *identityRenewalCurrent) validate(now time.Time) error {
+	if !c.expires.After(now) {
+		return ErrDenied
+	}
 	certificate, err := x509.ParseCertificate(c.source.Certificate)
 	if err != nil {
 		return ErrDenied
@@ -207,9 +210,37 @@ func (s *Store) PrepareIdentityRenewal(ctx context.Context, request enrollment.R
 	if err != nil {
 		return nil, err
 	}
+	cancellations := make(map[string]bool, len(records))
+	for i := range records {
+		r := &records[i]
+		target, _, err := r.confirmationTarget()
+		if err != nil {
+			return nil, err
+		}
+		cancelled, err := s.identityRenewalCancellation(ctx, tx, r, *target)
+		if err != nil {
+			return nil, err
+		}
+		if cancelled != nil {
+			confirmed, err := s.identityRenewalConfirmation(ctx, tx, r, *target)
+			if err != nil {
+				return nil, err
+			}
+			if confirmed != nil {
+				return nil, ErrUnavailable
+			}
+			if now.Before(cancelled.CancelledAt) {
+				return nil, ErrDenied
+			}
+			cancellations[r.Request.RequestID] = true
+		}
+	}
 	for i := range records {
 		r := &records[i]
 		if r.Request.RequestID == request.RequestID {
+			if cancellations[r.Request.RequestID] {
+				return nil, ErrDenied
+			}
 			previous, err := r.validate()
 			if err != nil || previous.IntentDigest != proof.IntentDigest || !r.ExpiresAt.After(now) || now.Before(r.CreatedAt) {
 				return nil, ErrDenied
@@ -225,7 +256,7 @@ func (s *Store) PrepareIdentityRenewal(ctx context.Context, request enrollment.R
 	}
 	for i := range records {
 		r := &records[i]
-		if r.Request.SourceCertificateHash == current.hash && r.ExpiresAt.After(now) {
+		if r.Request.SourceCertificateHash == current.hash && r.ExpiresAt.After(now) && !cancellations[r.Request.RequestID] {
 			return nil, ErrRenewalPending
 		}
 	}

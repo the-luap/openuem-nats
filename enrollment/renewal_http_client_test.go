@@ -30,6 +30,8 @@ type renewalHTTPFixture struct {
 	target       RenewalConfirmationTarget
 	confirmation *RenewalConfirmation
 	confirmed    ConfirmedIdentityRenewal
+	resolution   *RenewalResolution
+	resolved     ResolvedIdentityRenewal
 	server       *httptest.Server
 	client       *HTTPClient
 	requests     atomic.Int32
@@ -83,6 +85,12 @@ func newRenewalHTTPFixture(t *testing.T, respond func(*renewalHTTPFixture, http.
 				t.Error("confirmation transport changed proof", err)
 			}
 			json.NewEncoder(w).Encode(f.confirmed)
+		case IdentityRenewalPath(f.source.DeviceID, "resolve"):
+			q, err := DecodeRenewalResolution(body)
+			if err != nil || *q != *f.resolution {
+				t.Error("resolution transport changed proof", err)
+			}
+			json.NewEncoder(w).Encode(f.resolved)
 		default:
 			t.Error("renewal used another route")
 			http.Error(w, "unknown", 404)
@@ -115,6 +123,11 @@ func newRenewalHTTPFixture(t *testing.T, respond func(*renewalHTTPFixture, http.
 		t.Fatal(err)
 	}
 	f.confirmed = ConfirmedIdentityRenewal{ID: f.prepared.ID, DeviceID: f.source.DeviceID, CertificateHash: f.confirmation.CertificateHash, ConfirmedAt: now}
+	f.resolution, err = NewRenewalResolution(f.target, identity.keys, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.resolved = ResolvedIdentityRenewal{Version: 1, ID: f.prepared.ID, DeviceID: f.source.DeviceID, SourceCertificateHash: f.target.SourceCertificateHash, CertificateHash: f.confirmation.CertificateHash, Outcome: "cancelled", ResolvedAt: now}
 	return f
 }
 
@@ -290,8 +303,16 @@ func TestHTTPSIdentityRenewalConfirmationCancellationKeepsCommitAmbiguous(t *tes
 func FuzzIdentityRenewalResponses(f *testing.F) {
 	f.Add([]byte(`{}`))
 	f.Add([]byte(`null`))
+	f.Add([]byte(`{"version":1,"id":"11111111-1111-4111-8111-111111111111","device_id":"22222222-2222-4222-8222-222222222222","source_certificate_hash":"` + strings.Repeat("a", 64) + `","certificate_hash":"` + strings.Repeat("b", 64) + `","outcome":"cancelled","resolved_at":"2026-09-10T10:00:00Z"}`))
 	f.Add([]byte(`{"id":"11111111-1111-4111-8111-111111111111","device_id":"22222222-2222-4222-8222-222222222222","certificate_hash":"` + strings.Repeat("a", 64) + `","confirmed_at":"2026-09-10T10:00:00Z"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
+		if value, err := DecodeResolvedIdentityRenewal(data); err == nil {
+			wire, _ := json.Marshal(value)
+			again, err := DecodeResolvedIdentityRenewal(wire)
+			if err != nil || *again != *value {
+				t.Fatal("resolution response did not round trip")
+			}
+		}
 		if value, err := DecodePreparedIdentityRenewal(data); err == nil {
 			wire, _ := json.Marshal(value)
 			again, err := DecodePreparedIdentityRenewal(wire)

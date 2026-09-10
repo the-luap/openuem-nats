@@ -120,6 +120,16 @@ func (s *Store) ConfirmIdentityRenewal(ctx context.Context, request enrollment.R
 	if err != nil {
 		return nil, err
 	}
+	cancelled, err := s.identityRenewalCancellation(ctx, tx, issuance, *target)
+	if err != nil {
+		return nil, err
+	}
+	if cancelled != nil {
+		if previous != nil {
+			return nil, ErrUnavailable
+		}
+		return nil, ErrDenied
+	}
 	if previous != nil {
 		if current.hash != request.CertificateHash || current.source.BrokerKey != c.BrokerKey || now.Before(previous.ConfirmedAt) {
 			return nil, ErrDenied
