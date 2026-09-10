@@ -15,12 +15,7 @@ import (
 
 var ErrRenewalRecoveryPending = errors.New("identity renewal requires recovery task reconciliation")
 
-type ConfirmedIdentityRenewal struct {
-	ID              string    `json:"id"`
-	DeviceID        string    `json:"device_id"`
-	CertificateHash string    `json:"certificate_hash"`
-	ConfirmedAt     time.Time `json:"confirmed_at"`
-}
+type ConfirmedIdentityRenewal = enrollment.ConfirmedIdentityRenewal
 
 type identityRenewalConfirmationRecord struct {
 	Version     int                            `json:"version"`

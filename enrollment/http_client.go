@@ -133,36 +133,49 @@ func (c *HTTPClient) getJSON(ctx context.Context, path string, limit int64) ([]b
 }
 
 func (c *HTTPClient) doJSON(r *http.Request, limit int64) ([]byte, error) {
+	data, _, err := c.doJSONStatuses(r, limit)
+	return data, err
+}
+
+// Additional statuses are opt-in for a protocol with a fixed, bounded JSON
+// failure grammar. Other callers continue to discard all server error bodies.
+func (c *HTTPClient) doJSONStatuses(r *http.Request, limit int64, allowed ...int) ([]byte, int, error) {
 	ctx := r.Context()
 	r.Header.Set("Accept", "application/json")
 	response, err := c.client.Do(r)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, 0, ctx.Err()
 		}
-		return nil, ErrEnrollmentTransport
+		return nil, 0, ErrEnrollmentTransport
 	}
 	defer response.Body.Close()
-	if err := responseStatusError(response.StatusCode); err != nil {
-		return nil, err
+	statusError := responseStatusError(response.StatusCode)
+	for _, status := range allowed {
+		if response.StatusCode == status {
+			statusError = nil
+		}
+	}
+	if statusError != nil {
+		return nil, response.StatusCode, statusError
 	}
 	mediaType, params, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" || len(response.Header.Values("Content-Type")) != 1 || len(params) > 1 || (len(params) == 1 && !strings.EqualFold(params["charset"], "utf-8")) || len(response.Header.Values("Content-Encoding")) != 0 || response.ContentLength > limit {
-		return nil, ErrInvalidResponse
+		return nil, response.StatusCode, ErrInvalidResponse
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
 		clear(data)
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, response.StatusCode, ctx.Err()
 		}
-		return nil, ErrEnrollmentTransport
+		return nil, response.StatusCode, ErrEnrollmentTransport
 	}
 	if int64(len(data)) > limit || !utf8.Valid(data) || !json.Valid(data) {
 		clear(data)
-		return nil, ErrInvalidResponse
+		return nil, response.StatusCode, ErrInvalidResponse
 	}
-	return data, nil
+	return data, response.StatusCode, nil
 }
 
 func responseStatusError(status int) error {

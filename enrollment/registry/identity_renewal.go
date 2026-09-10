@@ -15,7 +15,7 @@ import (
 )
 
 const IdentityRenewalWindow = 30 * 24 * time.Hour
-const IdentityRenewalPreparationLifetime = 7 * 24 * time.Hour
+const IdentityRenewalPreparationLifetime = enrollment.RenewalPreparationLifetime
 const MaxIdentityRenewals = 128
 
 var ErrRenewalNotDue = errors.New("individual identity renewal is not due")
@@ -23,12 +23,7 @@ var ErrRenewalPending = errors.New("individual identity already has a pending re
 
 // PreparedIdentityRenewal contains only public issuance. Preparation does not
 // authorize the candidate certificate/broker key or retire the current identity.
-type PreparedIdentityRenewal struct {
-	ID                    string              `json:"id"`
-	SourceCertificateHash string              `json:"source_certificate_hash"`
-	ExpiresAt             time.Time           `json:"expires_at"`
-	Response              enrollment.Response `json:"response"`
-}
+type PreparedIdentityRenewal = enrollment.PreparedIdentityRenewal
 
 type identityRenewalRecord struct {
 	Version           int                       `json:"version"`

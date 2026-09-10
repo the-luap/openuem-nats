@@ -132,6 +132,34 @@ and local recipient key must survive this certificate transition.
 
 ## Remaining application integration
 
+### Native HTTPS client contract
+
+Public `PreparedIdentityRenewal` and `ConfirmedIdentityRenewal` response types now
+live in `enrollment`; the registry retains aliases. Endpoint code can use the wire
+contract without importing the database/issuer package. Bounded strict decoders
+reject duplicate/unknown/case-aliased fields, nulls, malformed UTF-8 and trailing
+documents. Response validators bind the original fresh proof, exact device/scope,
+source certificate, candidate key, actual lifetime extension and confirmation time.
+
+`HTTPClient.PrepareIdentityRenewal` sends one POST to
+`/enroll/desktop/identities/<device-uuid>/renewal/prepare`;
+`HTTPClient.ConfirmIdentityRenewal` sends one POST to the corresponding `/confirm`
+path. Request bodies retain their 32 KiB/8 KiB protocol bounds, with response limits
+of 96 KiB/2 KiB. Both require the client's independently authorized HTTPS origin,
+validate proofs before transport and validate the bound response afterward. They
+use the existing private transport without cookies, redirects or environment
+proxies; returned identity CAs never replace HTTPS server roots.
+
+HTTP 409 accepts only a bounded versioned `RenewalConflict` with fixed `not_due`,
+`pending` or `recovery_pending` codes. Other status errors remain fixed local
+errors. The client never exposes peer diagnostic bodies, URLs or request IDs in
+errors, performs no implicit retry and writes no local identity state. A cancelled
+or failed confirmation may already have committed: retain candidate keys and the
+same target, and recover with a fresh proof. Failure or expiry alone cannot
+authorize discarding a confirmation intent or falling back to old keys.
+
+### Application and endpoint lifecycle
+
 This is a tested shared registry component, not automatic endpoint renewal. Before
 exposing it, integrate authenticated HTTPS/gateway routing and rate limits, console
 key-processing acknowledgements and recovery reconciliation, native protected
@@ -173,5 +201,18 @@ provider or production service is contacted.
 The complete lifecycle library race suite passes, including enrollment in
 **10.165 seconds**, PostgreSQL registry in **27.199 seconds**, and root broker
 tests in **9.658 seconds**. Confirmation wire fuzzing passes **449,004 executions**
-in **30.596 seconds**. Vet and complete Linux/Windows builds pass. Published CI for
-this lifecycle change must be checked independently of the earlier proof baseline.
+in **30.596 seconds**. Vet and complete Linux/Windows builds pass. The lifecycle
+[CI for `e0d6829`](https://github.com/the-luap/openuem-nats/actions/runs/34469009791)
+passes native Windows and Linux/PostgreSQL/race/fuzz checks. Console
+[`1634d39`](https://github.com/the-luap/openuem-console/commit/1634d39cbde4d76f7d3d89ad28570cd192d40b9c)
+integrates the FileVault key-processing acknowledgement and tests key/receipt
+retention across a synthetic desktop certificate handoff.
+
+The native HTTPS client tests pass in **10.169 seconds**. The complete updated
+library race suite passes (enrollment **14.994 seconds**, registry **26.417 seconds**,
+root broker **9.091 seconds**). Response fuzzing passes **459,737 executions** in
+**31.111 seconds**; Vet and complete Linux/Windows builds pass. These checks cover
+response substitution, HTTP/2, exact proof transmission, unsafe media/encodings,
+redirects, untrusted TLS, typed conflicts and cancellation without implicit retry.
+The client contract still requires the matching console/gateway route integration
+and protected endpoint lifecycle before automatic renewal is enabled.
