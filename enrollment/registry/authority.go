@@ -162,11 +162,14 @@ func parseAuthority(certificatePEM, keyPEM []byte) (*x509.Certificate, crypto.Si
 }
 
 func issueCertificate(ca *x509.Certificate, signer crypto.Signer, id string, public crypto.PublicKey) ([]byte, time.Time, error) {
+	return issueCertificateAt(ca, signer, id, public, time.Now())
+}
+
+func issueCertificateAt(ca *x509.Certificate, signer crypto.Signer, id string, public crypto.PublicKey, now time.Time) ([]byte, time.Time, error) {
 	serial, err := certificateSerial()
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	now := time.Now()
 	expires := now.Add(90 * 24 * time.Hour).Truncate(time.Second)
 	if ca.NotAfter.Before(expires) {
 		expires = ca.NotAfter
@@ -183,7 +186,7 @@ func issueCertificate(ca *x509.Certificate, signer crypto.Signer, id string, pub
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	if _, err = issued.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+	if _, err = issued.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
 		return nil, time.Time{}, err
 	}
 	return der, expires, err

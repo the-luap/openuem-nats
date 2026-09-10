@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"time"
 )
 
 var (
@@ -29,8 +30,9 @@ var (
 var migrations embed.FS
 
 type Store struct {
-	db      *sql.DB
-	secrets cipher.AEAD
+	db           *sql.DB
+	secrets      cipher.AEAD
+	renewalClock func() time.Time
 }
 
 func NewStore(db *sql.DB, masterKey string) (*Store, error) {

@@ -81,8 +81,17 @@ validate the current key; its original receipt and ordinal remain immutable.
 
 ## Identity renewal integration
 
-The shared [identity renewal proof](../identity-renewal.md) binds both current
-private keys to a proven candidate and a stable retry intent. Registry issuance,
-pending generations, replacement confirmation and broker/session handoff must
-still be implemented under the existing identity/scope locks. Proof validation
-alone does not extend a stored identity or provide automatic renewal.
+The shared [identity renewal lifecycle](../identity-renewal.md) separates persistent
+preparation from candidate-key confirmation. Migrations 007–009 reserve keys across
+generations, retain authenticated immutable issuance/confirmation and require exact
+FileVault receipt reconciliation before handoff. `PrepareIdentityRenewal` preserves
+the current identity; `ConfirmIdentityRenewal` atomically changes its credentials,
+retains its device ID/scope/command consumer and schedules old-session disconnection.
+Fresh retries recover only the original result while its generation is current.
+
+The trusted console key processor must acknowledge FileVault reconciliation in the
+same transaction that retains the returned key/final result and audit, through
+`AcknowledgeRotationReconciliationInTransaction`. A routing worker's receipt alone
+cannot release renewal. Native candidate storage, console/service integration,
+authenticated transport, runtime scheduling and physical acceptance remain separate
+work. This registry component does not provide automatic endpoint renewal.

@@ -90,12 +90,14 @@ func (s *AccessStore) AuthenticateCertificate(ctx context.Context, id string, ce
 	if certificate == nil || !enrollment.ValidDeviceID(id) || certificate.NotBefore.After(time.Now()) || !certificate.NotAfter.After(time.Now()) {
 		return nil, ErrDenied
 	}
-	var matches bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_identities WHERE id=$1 AND certificate_hash=$2 AND revoked_at IS NULL AND certificate_expires_at>clock_timestamp())`, id, digest(certificate.Raw)).Scan(&matches)
-	if err != nil || !matches {
+	// Resolve the certificate and its current scope in one statement snapshot;
+	// renewal must not pass an old hash check then return a newer generation.
+	var identity Identity
+	err := s.db.QueryRowContext(ctx, `SELECT d.id,d.tenant_id,d.site_id,d.platform,d.architecture,d.display_name,d.certificate_expires_at FROM uem_agent_identities d JOIN sites s ON s.id=d.site_id AND s.tenant_sites=d.tenant_id WHERE d.id=$1 AND d.certificate_hash=$2 AND d.revoked_at IS NULL AND d.certificate_expires_at>clock_timestamp()`, id, digest(certificate.Raw)).Scan(&identity.ID, &identity.TenantID, &identity.SiteID, &identity.Platform, &identity.Architecture, &identity.DisplayName, &identity.CertificateExpiresAt)
+	if err != nil {
 		return nil, ErrDenied
 	}
-	return s.ActiveIdentity(ctx, id)
+	return &identity, nil
 }
 
 // PendingDisconnects leases a bounded batch for five seconds. Attempts remain
