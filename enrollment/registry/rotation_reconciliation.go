@@ -14,15 +14,18 @@ import (
 )
 
 type rotationReconciliation struct {
-	Version         int       `json:"version"`
-	TaskID          string    `json:"task_id"`
-	DeviceID        string    `json:"device_id"`
-	TenantID        int       `json:"tenant_id"`
-	SiteID          int       `json:"site_id"`
-	CertificateHash string    `json:"certificate_hash"`
-	ReceiptHash     string    `json:"receipt_hash"`
-	Actor           string    `json:"actor"`
-	ReconciledAt    time.Time `json:"reconciled_at"`
+	Version             int       `json:"version"`
+	TaskID              string    `json:"task_id"`
+	DeviceID            string    `json:"device_id"`
+	TenantID            int       `json:"tenant_id"`
+	SiteID              int       `json:"site_id"`
+	CertificateHash     string    `json:"certificate_hash"`
+	ReceiptHash         string    `json:"receipt_hash"`
+	Actor               string    `json:"actor"`
+	ReconciledAt        time.Time `json:"reconciled_at"`
+	RecoveryCheckID     string    `json:"recovery_check_id,omitempty"`
+	RecoveryReceiptHash string    `json:"recovery_receipt_hash,omitempty"`
+	RecoveryCompletedAt time.Time `json:"recovery_completed_at,omitzero"`
 }
 
 func rotationReconciliationPurpose(device, task string) string {
@@ -39,7 +42,19 @@ func (s *Store) openRotationReconciliation(encoded []byte, device, task string) 
 	}
 	defer clear(plain)
 	var r rotationReconciliation
-	if strictjson.Unmarshal(plain, &r) != nil || r.Version != 1 || r.TaskID != task || r.DeviceID != device || r.Actor == "" || len(r.Actor) > 255 || r.ReconciledAt.IsZero() {
+	if strictjson.Unmarshal(plain, &r) != nil || r.TaskID != task || r.DeviceID != device || r.Actor == "" || len(r.Actor) > 255 || r.ReconciledAt.IsZero() || !validRotationDigest(r.CertificateHash) || !validRotationDigest(r.ReceiptHash) {
+		return nil, ErrUnavailable
+	}
+	switch r.Version {
+	case 1:
+		if r.RecoveryCheckID != "" || r.RecoveryReceiptHash != "" || !r.RecoveryCompletedAt.IsZero() {
+			return nil, ErrUnavailable
+		}
+	case 2:
+		if !enrollment.ValidDeviceID(r.RecoveryCheckID) || !validRotationDigest(r.RecoveryReceiptHash) || r.RecoveryCompletedAt.IsZero() || r.ReconciledAt.Before(r.RecoveryCompletedAt) {
+			return nil, ErrUnavailable
+		}
+	default:
 		return nil, ErrUnavailable
 	}
 	return &r, nil
@@ -122,26 +137,36 @@ func (s *Store) AcknowledgeRotationReconciliationInTransaction(ctx context.Conte
 	if _, err := tx.ExecContext(ctx, `INSERT INTO uem_agent_rotation_reconciliations(task_id,device_id,encrypted_record) VALUES($1,$2,$3)`, task, device, encoded); err != nil {
 		return err
 	}
-	return audit(ctx, tx, scope, actor, "recovery.rotation.reconciled", task)
+	if err := audit(ctx, tx, scope, actor, "recovery.rotation.reconciled", task); err != nil {
+		return err
+	}
+	return current.validate(s.identityRenewalTime())
 }
 
 // The identity lock serializes this scan with rotation delivery, receipts and
 // trusted reconciliation. Completed receipts remain a blocker until the key
 // processor's authenticated acknowledgement matches that exact immutable result.
 func (s *Store) identityRenewalRotationGuard(ctx context.Context, tx *sql.Tx, current *identityRenewalCurrent) error {
-	rows, err := tx.QueryContext(ctx, `SELECT t.id,t.tenant_id,t.site_id,t.certificate_hash,t.status,t.result,t.completed_at,r.encrypted_record FROM uem_agent_rotation_tasks t LEFT JOIN uem_agent_rotation_reconciliations r ON r.task_id=t.id AND r.device_id=t.device_id WHERE t.device_id=$1 AND (t.delivered_at IS NOT NULL OR t.status='uncertain') ORDER BY t.ordinal LIMIT $2`, current.source.DeviceID, enrollment.MaxRotationAttempts+1)
+	rows, err := tx.QueryContext(ctx, `SELECT t.id,t.tenant_id,t.site_id,t.certificate_hash,t.status,t.result,t.completed_at,r.encrypted_record,r.recovery_check_id FROM uem_agent_rotation_tasks t LEFT JOIN uem_agent_rotation_reconciliations r ON r.task_id=t.id AND r.device_id=t.device_id WHERE t.device_id=$1 AND (t.delivered_at IS NOT NULL OR t.status='uncertain') ORDER BY t.ordinal LIMIT $2`, current.source.DeviceID, enrollment.MaxRotationAttempts+1)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	count := 0
+	type historical struct {
+		acknowledgement *rotationReconciliation
+		completed       time.Time
+		wire            []byte
+	}
+	var checks []historical
 	for rows.Next() {
 		count++
 		var id, certificateHash, status string
 		var tenant, site int
 		var wire, encoded []byte
 		var completed sql.NullTime
-		if err := rows.Scan(&id, &tenant, &site, &certificateHash, &status, &wire, &completed, &encoded); err != nil {
+		var checkID sql.NullString
+		if err := rows.Scan(&id, &tenant, &site, &certificateHash, &status, &wire, &completed, &encoded, &checkID); err != nil {
 			return err
 		}
 		if count > enrollment.MaxRotationAttempts || tenant != current.source.TenantID || site != current.source.SiteID {
@@ -151,9 +176,25 @@ func (s *Store) identityRenewalRotationGuard(ctx context.Context, tx *sql.Tx, cu
 			return ErrRenewalRecoveryPending
 		}
 		r, err := s.openRotationReconciliation(encoded, current.source.DeviceID, id)
-		if err != nil || r.TenantID != tenant || r.SiteID != site || r.CertificateHash != certificateHash || r.ReceiptHash != digest(wire) || r.ReconciledAt.Before(completed.Time) {
+		if err != nil || len(wire) > enrollment.MaxRecoveryMessage || r.TenantID != tenant || r.SiteID != site || r.CertificateHash != certificateHash || r.ReceiptHash != digest(wire) || r.ReconciledAt.Before(completed.Time) || (r.Version == 1 && checkID.Valid) || (r.Version == 2 && (!checkID.Valid || checkID.String != r.RecoveryCheckID)) {
 			return ErrUnavailable
 		}
+		if r.Version == 2 {
+			checks = append(checks, historical{r, completed.Time, wire})
+		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	// Close the bounded task scan before issuing further queries on this tx.
+	// A partial restore must retain both the authenticated admission and proof.
+	for _, check := range checks {
+		if err := s.validateHistoricalRotationAcknowledgement(ctx, tx, check.acknowledgement, check.wire, check.completed); err != nil {
+			return err
+		}
+	}
+	return nil
 }

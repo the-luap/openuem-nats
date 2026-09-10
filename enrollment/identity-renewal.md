@@ -124,6 +124,33 @@ pending uncertainty, missing or corrupted acknowledgements cannot release handof
 Older completed work requires explicit verified reconciliation before renewal;
 no migration guesses that it was safely processed.
 
+Migration 011 adds immutable encrypted admissions for historical rotation checks.
+The trusted console can bind a fresh read-only `RecoveryTask` to an exact completed
+rotation receipt, the current retained key ciphertext digest, task identity and
+nonce hash. `QueueHistoricalRotationCheckInTransaction` authenticates the old
+receipt with the current certificate or a source certificate retained in an
+authenticated issuance record. An unconfirmed candidate is never historical
+authority. Existing pending recovery work and unresolved mutations are preserved.
+
+`AcknowledgeHistoricalRotationCheckInTransaction` requires that dedicated task's
+timely signed `valid` result, unchanged retained-key digest, current certificate
+and recipient. The console must recheck its native association, decrypt that exact
+key record, and commit validation, audit and acknowledgement together. This proves
+current volume recoverability without reconstructing an erased historical return
+key. An unrelated validation, unsigned success flag or changed ciphertext cannot
+release handoff. At most 256 historical checks per agent are retained, including
+unsuccessful attempts; capacity is never reclaimed by deleting evidence.
+
+Version 2 acknowledgements retain the challenge ID, signed proof digest and
+completion time. Renewal revalidates both the encrypted admission and actual proof;
+a partial restore or damaged index cannot waive recovery requirements. Version 1
+normal key-processing acknowledgements remain compatible. Older libraries reject
+the new acknowledgement version rather than trusting it without its prerequisites.
+Verified `invalid`, `unavailable` and `unsupported` rotation receipts have a separate
+non-key acknowledgement API; returned keys and uncertain execution cannot use it.
+Stopped uncertainty must already have completed its original resolution before
+the historical current-key challenge is admitted.
+
 Delivered pending read-only recovery tasks must finish first. Existing certificate
 epoch triggers cancel undelivered pending tasks during handoff; completed receipts
 and historical ordinals remain. The endpoint must register a new server recipient
