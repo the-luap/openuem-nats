@@ -135,7 +135,10 @@ func (s *Store) historicalRotationReceipt(ctx context.Context, tx *sql.Tx, curre
 	if enrollment.VerifyRotationResult(receipt, cert, completed) != nil {
 		return nil, ErrDenied
 	}
-	if receipt.Outcome == "uncertain" && (!receipt.ExecutionStopped || resolution == "" || !resolved.Valid || !resolved.Time.Equal(completed)) {
+	// Older resolution writers used separate clock_timestamp() expressions for
+	// completion and resolution. Both must precede this admission; equality is
+	// not guaranteed and grants no additional signed execution evidence.
+	if receipt.Outcome == "uncertain" && (!receipt.ExecutionStopped || resolution == "" || !resolved.Valid || resolved.Time.Before(delivered) || resolved.Time.After(s.identityRenewalTime())) {
 		return nil, ErrDenied
 	}
 	return &historicalRotationReceipt{result: receipt, wire: wire, completed: completed}, nil

@@ -246,7 +246,7 @@ func TestHistoricalRotationFreshCheckRetainsProofAndReleasesGuard(t *testing.T) 
 		`UPDATE uem_agent_recovery_tasks SET nonce_hash=repeat('0',64)`,
 		`UPDATE uem_agent_recovery_tasks SET recipient_id='00000000-0000-4000-8000-000000000001'`,
 		`ALTER TABLE uem_agent_rotation_recovery_checks DISABLE TRIGGER uem_agent_rotation_recovery_check_immutable; UPDATE uem_agent_rotation_recovery_checks SET encrypted_record=set_byte(encrypted_record,20,get_byte(encrypted_record,20)#1)`,
-		`ALTER TABLE uem_agent_rotation_recovery_checks DISABLE TRIGGER ALL; DELETE FROM uem_agent_rotation_recovery_checks; ALTER TABLE uem_agent_rotation_recovery_checks ENABLE TRIGGER ALL`,
+		`ALTER TABLE uem_agent_rotation_reconciliations DROP CONSTRAINT uem_agent_rotation_reconciliations_recovery_check_id_fkey; ALTER TABLE uem_agent_rotation_recovery_checks DISABLE TRIGGER uem_agent_rotation_recovery_check_immutable; DELETE FROM uem_agent_rotation_recovery_checks`,
 		`ALTER TABLE uem_agent_rotation_reconciliations DISABLE TRIGGER uem_agent_rotation_reconciliation_immutable; UPDATE uem_agent_rotation_reconciliations SET recovery_check_id=NULL`,
 	} {
 		t.Run(statement, func(t *testing.T) {
@@ -330,5 +330,61 @@ func TestHistoricalRotationNonKeyOutcomesRequireExactReceipt(t *testing.T) {
 				t.Fatal("non-mutating receipt blocked renewal", err)
 			}
 		})
+	}
+}
+
+func TestHistoricalRotationResolvedUncertaintyRequiresFreshBoundProof(t *testing.T) {
+	f := newRotationFixture(t)
+	rotation := f.queue(t)
+	if _, err := f.access.HandleRotation(t.Context(), *f.identity, f.pollRequest()); err != nil {
+		t.Fatal(err)
+	}
+	stopped := f.stoppedResult(t, rotation.Context)
+	if _, err := f.access.HandleRotation(t.Context(), *f.identity, stopped); err != nil {
+		t.Fatal(err)
+	}
+	wire, _ := json.Marshal(stopped.Result)
+	check, nonce := historicalCheck(t, f, rotation, wire)
+	queue := func() error {
+		return historyTx(t, f, func(tx *sql.Tx) error {
+			return f.s.QueueHistoricalRotationCheckInTransaction(t.Context(), tx, f.identity.Scope, f.identity.ID, check, "console")
+		})
+	}
+	if err := queue(); !errors.Is(err, ErrDenied) {
+		t.Fatal("unresolved uncertainty bypassed resolution", err)
+	}
+	if err := historyTx(t, f, func(tx *sql.Tx) error {
+		return f.access.QueueRotationValidation(t.Context(), tx, rotation.Context, check.Task, check.NonceHash)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reportHistoricalCheck(t, f, check, nonce, "valid")
+	if err := historyTx(t, f, func(tx *sql.Tx) error {
+		return f.access.ResolveRotation(t.Context(), tx, rotation.Context, check.Task.Context, check.NonceHash, "console")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Separate database clock expressions in earlier releases can differ. This
+	// fixture makes that difference deterministic without forging a stop proof.
+	if _, err := f.s.db.Exec(`UPDATE uem_agent_rotation_tasks SET resolved_at=clock_timestamp() WHERE id=$1`, check.RotationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := historyTx(t, f, func(tx *sql.Tx) error {
+		return f.s.AcknowledgeHistoricalRotationCheckInTransaction(t.Context(), tx, f.identity.Scope, f.identity.ID, check.Task.Context.TaskID, check.KeyDigest, "console")
+	}); !errors.Is(err, ErrDenied) {
+		t.Fatal("old resolution validation became a history admission", err)
+	}
+	check, nonce = historicalCheck(t, f, rotation, wire)
+	if err := queue(); err != nil {
+		t.Fatal("legitimate resolved history rejected", err)
+	}
+	reportHistoricalCheck(t, f, check, nonce, "valid")
+	if err := historyTx(t, f, func(tx *sql.Tx) error {
+		return f.s.AcknowledgeHistoricalRotationCheckInTransaction(t.Context(), tx, f.identity.Scope, f.identity.ID, check.Task.Context.TaskID, check.KeyDigest, "console")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := historyGuard(t, f); err != nil {
+		t.Fatal("resolved historical proof did not release renewal", err)
 	}
 }
