@@ -42,5 +42,7 @@ jobs:
         with:
           go-version: '1.26.8'
           cache: true
+      - name: Bounded individual identity renewal wire grammar
+        run: go test -run '^$' -fuzz='^FuzzIdentityRenewalWire$' -fuzztime=15s -fuzzminimizetime=1s -parallel=2 ./enrollment
       - name: Key proof, TLS broker, scope, registry and revocation
         run: go test -race -count=1 ./...

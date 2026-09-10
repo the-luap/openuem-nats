@@ -78,3 +78,11 @@ The worker does not receive plaintext keys or the console return private key.
 Migration 006 binds a subsequent read-only validation to a signed, stopped
 uncertain attempt. Explicit console resolution requires that selected proof to
 validate the current key; its original receipt and ordinal remain immutable.
+
+## Identity renewal integration
+
+The shared [identity renewal proof](../identity-renewal.md) binds both current
+private keys to a proven candidate and a stable retry intent. Registry issuance,
+pending generations, replacement confirmation and broker/session handoff must
+still be implemented under the existing identity/scope locks. Proof validation
+alone does not extend a stored identity or provide automatic renewal.
