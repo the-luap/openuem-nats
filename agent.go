@@ -202,6 +202,7 @@ type AgentReport struct {
 
 type Config struct {
 	RotationTaskVersion      int  `json:"rotation_task_version,omitempty"`
+	SoftwareTaskVersion      int  `json:"software_task_version,omitempty"`
 	RecoveryTaskVersion      int  `json:"recovery_task_version,omitempty"`
 	HardwareInventoryVersion int  `json:"hardware_inventory_version,omitempty"`
 	Ok                       bool `json:"ok,omitempty"`

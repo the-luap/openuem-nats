@@ -52,3 +52,5 @@ jobs:
         run: go test -run '^$' -fuzz='^FuzzIdentityRenewalResponses$' -fuzztime=15s -fuzzminimizetime=1s -parallel=2 ./enrollment
       - name: Key proof, TLS broker, scope, registry and revocation
         run: go test -race -count=1 ./...
+      - name: Bounded Windows software command and receipt grammar
+        run: go test -run '^$' -fuzz='^FuzzSoftwareWire$' -fuzztime=15s -fuzzminimizetime=1s -parallel=2 ./enrollment

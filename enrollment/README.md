@@ -1,5 +1,8 @@
 # Individual agent enrollment protocol
 
+[Authenticated Windows software tasks](windows-software.md) describe the separate
+signed command, encrypted plan and durable receipt protocol.
+
 This package defines version 1 of the endpoint proof and private message subjects.
 It is a shared implementation for the console, agent and worker. The enrollment
 service, installer, durable identity storage and broker authentication integration

@@ -9,7 +9,7 @@ import (
 var ErrInvalidSubject = errors.New("invalid individual-agent subject")
 
 var requestOperations = []string{
-	"report", "hardware", "recovery", "rotation", "deployresult", "agentconfig", "wingetcfg.profiles",
+	"report", "hardware", "recovery", "rotation", "software", "deployresult", "agentconfig", "wingetcfg.profiles",
 	"ansiblecfg.profiles", "wingetcfg.deploy", "wingetcfg.exclude", "wingetcfg.report",
 }
 
