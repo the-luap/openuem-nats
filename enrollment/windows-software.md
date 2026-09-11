@@ -56,6 +56,12 @@ Native exit codes, machine observations and execution state (`not_started`,
 Uncertain/restart-required tasks need explicit reconciliation; timeouts do not
 release them for another installer.
 
+The separate [reconciliation evidence codec](windows-software-reconciliation.md)
+now defines a signed read-only task, later-boot observations and current-certificate
+submission proofs. It preserves the executable wire format and original receipt.
+Its registry, worker, native consumer and console integration are still required;
+the codec alone does not release an existing reservation.
+
 A result includes its original signing certificate and timestamp so an offline
 receipt can survive multiple renewals. Every submission also needs a fresh proof
 from the current device certificate over the exact result hash. This closes the

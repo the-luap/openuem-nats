@@ -54,3 +54,5 @@ jobs:
         run: go test -race -count=1 ./...
       - name: Bounded Windows software command and receipt grammar
         run: go test -run '^$' -fuzz='^FuzzSoftwareWire$' -fuzztime=15s -fuzzminimizetime=1s -parallel=2 ./enrollment
+      - name: Bounded Windows post-boot reconciliation grammar
+        run: go test -run '^$' -fuzz='^FuzzSoftwareReconciliationCodecs$' -fuzztime=15s -fuzzminimizetime=1s -parallel=2 ./enrollment
