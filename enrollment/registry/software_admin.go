@@ -19,6 +19,8 @@ type SoftwareTaskStatus struct {
 	CreatedAt, ExpiresAt                                             time.Time
 	DeliveredAt, CompletedAt                                         *time.Time
 	Outcome                                                          *enrollment.SoftwareOutcome
+	ReconciliationID                                                 string
+	ReconciledAt                                                     *time.Time
 }
 
 // ReadSoftwareTaskInTransaction requires the caller's read authorization and
@@ -35,6 +37,7 @@ func (s *AccessStore) ReadSoftwareTaskInTransaction(ctx context.Context, tx *sql
 	defer clear(record.result)
 	c := record.task.Context
 	status := &SoftwareTaskStatus{ID: id, PreparationID: c.PreparationID, RevisionID: c.RevisionID, AgentID: c.Identity.AgentID, Operation: c.Expectation.Operation, Actor: record.actor, Scope: scope, Status: record.status, CreatedAt: time.Unix(c.CreatedAt, 0).UTC(), ExpiresAt: time.Unix(c.ExpiresAt, 0).UTC(), DeliveredAt: record.deliveredAt}
+	status.ReconciliationID, status.ReconciledAt = record.reconciliationID, record.reconciledAt
 	var now time.Time
 	if err = tx.QueryRowContext(ctx, `SELECT completed_at,clock_timestamp() FROM uem_agent_software_tasks WHERE id=$1 AND tenant_id=$2 AND site_id=$3`, id, scope.TenantID, scope.SiteID).Scan(&status.CompletedAt, &now); err != nil {
 		return nil, err

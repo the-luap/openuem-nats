@@ -406,6 +406,20 @@ func FuzzSoftwareReconciliationCodecs(f *testing.F) {
 	}
 	encoded, _ = json.Marshal(result)
 	f.Add(encoded)
+	proof, err := SignSoftwareReconciliationSubmission(*result, fixture.identity, fixture.certificate, fixture.signer, fixture.now)
+	if err != nil {
+		f.Fatal(err)
+	}
+	receipt, _ := SoftwareReconciliationReceipt(*result, fixture.now)
+	for _, value := range []any{
+		SoftwareReconciliationRequest{Version: SoftwareReconciliationVersion, Protocol: SoftwareReconciliationProtocol, AgentID: fixture.identity.AgentID, Action: "poll"},
+		SoftwareReconciliationRequest{Version: SoftwareReconciliationVersion, Protocol: SoftwareReconciliationProtocol, AgentID: fixture.identity.AgentID, Action: "result", Result: result, Submission: proof},
+		SoftwareReconciliationReply{Version: SoftwareReconciliationVersion, Protocol: SoftwareReconciliationProtocol, OK: true, Task: task},
+		SoftwareReconciliationReply{Version: SoftwareReconciliationVersion, Protocol: SoftwareReconciliationProtocol, OK: true, Receipt: receipt},
+	} {
+		data, _ := json.Marshal(value)
+		f.Add(data)
+	}
 	f.Add([]byte(`{"context":{}}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > MaxSoftwareMessage+1 {
@@ -424,6 +438,24 @@ func FuzzSoftwareReconciliationCodecs(f *testing.F) {
 			}
 			if result.Outcome.AllowsRelease(result.Context.Original.Expectation) && (len(result.OriginalNonce) != 32 || !result.Outcome.Current.After(result.Outcome.Admission)) {
 				t.Fatal("release without original evidence and later boot")
+			}
+		}
+		if request, err := DecodeSoftwareReconciliationRequest(data, fixture.now); err == nil {
+			canonical, _ := json.Marshal(request)
+			if !bytes.Equal(data, canonical) {
+				t.Fatal("noncanonical request accepted")
+			}
+			if _, err := DecodeSoftwareRequest(data, fixture.now); err == nil {
+				t.Fatal("reconciliation request accepted as executable RPC")
+			}
+		}
+		if reply, err := DecodeSoftwareReconciliationReply(data, fixture.now); err == nil {
+			canonical, _ := json.Marshal(reply)
+			if !bytes.Equal(data, canonical) {
+				t.Fatal("noncanonical reply accepted")
+			}
+			if _, err := DecodeSoftwareReply(data, fixture.now); err == nil {
+				t.Fatal("reconciliation reply accepted as executable RPC")
 			}
 		}
 	})

@@ -59,8 +59,10 @@ release them for another installer.
 The separate [reconciliation evidence codec](windows-software-reconciliation.md)
 now defines a signed read-only task, later-boot observations and current-certificate
 submission proofs. It preserves the executable wire format and original receipt.
-Its registry, worker, native consumer and console integration are still required;
-the codec alone does not release an existing reservation.
+The registry now retains separate read-only tasks and observations and releases
+reservations only through authenticated, audited reconciliation transactions.
+Worker routing, native consumer and explicit console integration are still required;
+the library alone exposes no user-facing reconciliation action.
 
 A result includes its original signing certificate and timestamp so an offline
 receipt can survive multiple renewals. Every submission also needs a fresh proof

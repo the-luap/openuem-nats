@@ -21,6 +21,8 @@ type softwareTaskRecord struct {
 	result                                         []byte
 	resultCertificate                              *x509.Certificate
 	deliveredAt                                    *time.Time
+	reconciliationID                               string
+	reconciledAt                                   *time.Time
 }
 
 func loadSoftwareTask(ctx context.Context, tx *sql.Tx, scope Scope, id string) (*softwareTaskRecord, error) {
@@ -29,7 +31,7 @@ func loadSoftwareTask(ctx context.Context, tx *sql.Tx, scope Scope, id string) (
 	var created, expires time.Time
 	var resultHash sql.NullString
 	record := new(softwareTaskRecord)
-	err := tx.QueryRowContext(ctx, `SELECT device_id,preparation_id,revision_id,recipient_id,certificate_hash,certificate,authority,nonce_hash,task_hash,task_context,envelope,actor,status,created_at,expires_at,delivered_at,result,result_certificate,result_hash FROM uem_agent_software_tasks WHERE id=$1 AND tenant_id=$2 AND site_id=$3 FOR UPDATE`, id, scope.TenantID, scope.SiteID).Scan(&agent, &preparation, &revision, &recipient, &certificateHash, &certificate, &authority, &record.nonceHash, &record.taskHash, &contextWire, &envelope, &record.actor, &record.status, &created, &expires, &record.deliveredAt, &record.result, &resultCertificate, &resultHash)
+	err := tx.QueryRowContext(ctx, `SELECT device_id,preparation_id,revision_id,recipient_id,certificate_hash,certificate,authority,nonce_hash,task_hash,task_context,envelope,actor,status,created_at,expires_at,delivered_at,result,result_certificate,result_hash,COALESCE(reconciliation_id::text,''),reconciled_at FROM uem_agent_software_tasks WHERE id=$1 AND tenant_id=$2 AND site_id=$3 FOR UPDATE`, id, scope.TenantID, scope.SiteID).Scan(&agent, &preparation, &revision, &recipient, &certificateHash, &certificate, &authority, &record.nonceHash, &record.taskHash, &contextWire, &envelope, &record.actor, &record.status, &created, &expires, &record.deliveredAt, &record.result, &resultCertificate, &resultHash, &record.reconciliationID, &record.reconciledAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -95,6 +97,9 @@ func loadSoftwareTask(ctx context.Context, tx *sql.Tx, scope Scope, id string) (
 	} else if len(resultCertificate) > 0 || resultHash.Valid {
 		return nil, ErrDenied
 	}
+	if err := verifySoftwareRelease(ctx, tx, scope, record); err != nil {
+		return nil, err
+	}
 	return record, nil
 }
 
@@ -142,7 +147,7 @@ func (s *Store) QueueSoftwareTaskInTransaction(ctx context.Context, tx *sql.Tx, 
 		return nil, err
 	}
 	var active bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_software_tasks WHERE device_id=$1 AND status IN ('pending','delivered','uncertain','restart_required'))`, device).Scan(&active); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_software_tasks WHERE device_id=$1 AND status IN ('pending','delivered','uncertain','restart_required') AND reconciliation_id IS NULL)`, device).Scan(&active); err != nil {
 		return nil, err
 	}
 	if active {

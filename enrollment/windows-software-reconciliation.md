@@ -65,6 +65,49 @@ reservation. All other states require the original 32-byte nonce; definite state
 also require later-boot proof and a non-unknown exact observation. The result must
 be signed within the reconciliation lifetime, then retained unchanged for retry.
 
+## Registry transition and private RPC
+
+Migration 013 adds immutable reconciliation intent/result rows and a separate
+release reference on the original software task. It preserves every existing
+executable envelope, receipt, outcome, status and timestamp. The active-task
+constraint excludes an original task only after it has a retained release
+reference; the database guard requires an accepted definite observation in the
+same organization, site, device and original-task scope. An unknown, waiting or
+unavailable observation cannot release a reservation, even through a direct SQL
+update. A release reference cannot be reassigned or erased.
+
+`QueueSoftwareReconciliationInTransaction` requires current explicit assignment
+permission and the caller's locked Windows inventory/capability evidence. It
+locks current identity before original task and reconciliation rows. Only delivered
+uncertain/restart-required originals can be reviewed; review alone changes no
+execution state. One active observation is allowed per original task. Identical
+retries retain the original signed intent and audit; another active request is
+rejected. The review deadline must be more than one minute away, at most one hour
+away, and within the current device certificate lifetime.
+
+`SoftwareReconciliationRequest` has only `poll` and `result` actions. Its separate
+protocol discriminator is intended for the existing private `software` subject;
+the executable software decoder rejects it. The routing worker must explicitly
+select the matching decoder and retain its current identity/inventory locks.
+`HandleSoftwareReconciliationInTransaction` checks the subject-bound device,
+current authority, task generation, complete retained transcript and fresh current
+certificate proof. Delivery, receipt and any original reservation release are
+audited in the same transaction. A worker must send the reply only after commit.
+
+Expiration of a read-only observation never releases the original execution.
+A receipt signed before its deadline can arrive after expiration and certificate
+renewal. An accepted definite late receipt cancels a subsequent undelivered
+observation. An original execution receipt that arrives later is retained without
+changing the established release or another task's reservation. No reconciliation
+runs or automatically retries an installer.
+
+`ReadSoftwareReconciliationInTransaction` returns verified safe observation history
+under the caller's original-scope read rights and audit. The original task projection
+keeps its execution outcome and adds the separate reconciliation ID/time. Reading a
+released original re-verifies its referenced signed observation. Revocation preserves
+history and cancels undelivered generation-bound observation tasks. Administrative
+cancellation applies only before delivery and cannot release executable work.
+
 ## Verification and integration boundary
 
 Tests use real command certificates and device signatures to cover altered
@@ -75,17 +118,23 @@ Bounded canonical codecs reject unknown/duplicate fields, alternate encodings an
 oversized messages. The fuzz target checks canonical round trips and the minimum
 evidence needed for an outcome to be eligible for reservation release.
 
-Local validation passed the full repository race suite against an owned isolated
-PostgreSQL instance (registry: 64.981 seconds), the focused final nonce-binding
-race check, Windows amd64 build and enrollment vet. The bounded reconciliation
-fuzz run passed 195,387 inputs in 15.740 seconds. Native CI separately executes
-the same protocol tests and a bounded fuzz run; its definition alone is not proof
-that the remote checks passed.
+The standalone signature codec passed [native CI](https://github.com/the-luap/openuem-nats/actions/runs/34592854588)
+at revision `39eae9b946e31dad954ddbf32d983fb4872744b2`. Local validation of the
+subsequent registry/RPC integration passed the full repository race suite against
+an owned isolated PostgreSQL instance (registry: 90.171 seconds), enrollment and
+registry vet, and Windows amd64/Linux arm64 builds. Its expanded bounded RPC fuzz
+run passed 264,777 inputs in 16.305 seconds. The workflow includes the new tests;
+its definition alone is not proof that a remote integration run passed.
 
-This change provides the wire types and verification primitives only. It adds no
-device RPC action, capability advertisement, database release transition, native
-observation consumer or console reconciliation button. Those integrations must
-preserve the original execution receipt, retain a separate immutable observation,
-and apply all current identity/authorization checks before release. Existing
-uncertain/restart-required tasks remain reserved. Physical reboot, hibernate,
-offline and package acceptance remain separate requirements.
+The registry tests cover all five outcomes for retained uncertainty, restart-required
+receipts and missing original receipts; queue/delivery/report/release audit rollback;
+concurrent exact queue and receipt retries; foreign scope, wrong nonce, immutable
+history, cancellation, two real certificate renewals, historical proof after revocation,
+late original receipts, corrupted release evidence and migration of existing retained
+restart uncertainty. A short-lived signed fixture exercises actual deadline expiry,
+offline receipt recovery and cancellation of a superseded pending observation.
+
+Worker routing, agent capability advertisement, protected native reconciliation
+journals/observation execution and the explicit console review/history UI still need
+integration. This library exposes no user-facing reconciliation action on its own.
+Physical reboot, hibernate, offline and package acceptance remain separate requirements.

@@ -14,7 +14,7 @@ import (
 
 func (s *AccessStore) SoftwareReady(ctx context.Context) bool {
 	var ready bool
-	err := s.db.QueryRowContext(ctx, `SELECT to_regclass('uem_agent_software_recipients') IS NOT NULL AND to_regclass('uem_agent_software_challenges') IS NOT NULL AND to_regclass('uem_agent_software_tasks') IS NOT NULL`).Scan(&ready)
+	err := s.db.QueryRowContext(ctx, `SELECT to_regclass('uem_agent_software_recipients') IS NOT NULL AND to_regclass('uem_agent_software_challenges') IS NOT NULL AND to_regclass('uem_agent_software_tasks') IS NOT NULL AND to_regclass('uem_agent_software_reconciliations') IS NOT NULL`).Scan(&ready)
 	return err == nil && ready
 }
 func softwareCertificate(raw []byte) (*x509.Certificate, error) {

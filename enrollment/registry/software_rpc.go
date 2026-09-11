@@ -118,7 +118,7 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 			return nil, ErrDenied
 		}
 		var id string
-		err = tx.QueryRowContext(ctx, `SELECT id FROM uem_agent_software_tasks WHERE device_id=$1 AND tenant_id=$2 AND site_id=$3 AND status IN ('pending','delivered','uncertain') AND result IS NULL ORDER BY created_at,id LIMIT 1`, identity.ID, identity.TenantID, identity.SiteID).Scan(&id)
+		err = tx.QueryRowContext(ctx, `SELECT id FROM uem_agent_software_tasks WHERE device_id=$1 AND tenant_id=$2 AND site_id=$3 AND status IN ('pending','delivered','uncertain') AND reconciliation_id IS NULL AND result IS NULL ORDER BY created_at,id LIMIT 1`, identity.ID, identity.TenantID, identity.SiteID).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			break
 		}
@@ -193,6 +193,11 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 		}
 		if err = audit(ctx, tx, identity.Scope, "device:"+identity.ID, "software.task.reported", result.Context.TaskID); err != nil {
 			return nil, err
+		}
+		if status == "reported" {
+			if err = cancelPendingSoftwareReconciliations(ctx, tx, identity.Scope, result.Context.TaskID); err != nil {
+				return nil, err
+			}
 		}
 		reply.Receipt = receipt
 	default:
