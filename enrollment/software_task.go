@@ -24,27 +24,39 @@ import (
 type SoftwareIdentity = RecoveryIdentity
 
 type SoftwareRegistration struct {
-	Version   int              `json:"version"`
-	Protocol  string           `json:"protocol"`
-	Identity  SoftwareIdentity `json:"identity"`
-	ID        string           `json:"id"`
-	PublicKey []byte           `json:"public_key"`
-	Nonce     []byte           `json:"nonce"`
-	ExpiresAt int64            `json:"expires_at"`
+	Version     int              `json:"version"`
+	Protocol    string           `json:"protocol"`
+	Identity    SoftwareIdentity `json:"identity"`
+	ID          string           `json:"id"`
+	PublicKey   []byte           `json:"public_key"`
+	Nonce       []byte           `json:"nonce"`
+	ExpiresAt   int64            `json:"expires_at"`
+	BurnVersion int              `json:"burn_version,omitempty"`
 }
 
 func (r SoftwareRegistration) Valid(now time.Time) bool {
-	return r.Version == SoftwareVersion && r.Protocol == SoftwareProtocol && r.Identity.Valid() && ValidDeviceID(r.ID) && ValidRecoveryPublicKey(r.PublicKey) && len(r.Nonce) == 32 && r.ExpiresAt > now.Unix() && r.ExpiresAt <= now.Add(10*time.Minute).Unix()
+	return validSoftwareBurnVersion(r.BurnVersion) && r.Version == SoftwareVersion && r.Protocol == SoftwareProtocol && r.Identity.Valid() && ValidDeviceID(r.ID) && ValidRecoveryPublicKey(r.PublicKey) && len(r.Nonce) == 32 && r.ExpiresAt > now.Unix() && r.ExpiresAt <= now.Add(10*time.Minute).Unix()
 }
 
 type SoftwareRecipient struct {
-	ID        string           `json:"id"`
-	Identity  SoftwareIdentity `json:"identity"`
-	PublicKey []byte           `json:"public_key"`
+	ID          string           `json:"id"`
+	Identity    SoftwareIdentity `json:"identity"`
+	PublicKey   []byte           `json:"public_key"`
+	BurnVersion int              `json:"burn_version,omitempty"`
 }
 
 func (r SoftwareRecipient) Valid() bool {
-	return ValidDeviceID(r.ID) && r.Identity.Valid() && ValidRecoveryPublicKey(r.PublicKey)
+	return validSoftwareBurnVersion(r.BurnVersion) && ValidDeviceID(r.ID) && r.Identity.Valid() && ValidRecoveryPublicKey(r.PublicKey)
+}
+
+func validSoftwareBurnVersion(version int) bool {
+	return version == 0 || version == SoftwareBurnVersion
+}
+
+// Supports binds new execution kinds to the capability retained from the
+// certificate-signed registration. It must be checked before sealing a task.
+func (r SoftwareRecipient) Supports(plan SoftwarePlan) bool {
+	return r.Valid() && plan.Valid() && (plan.Kind != "windows-burn" || r.BurnVersion == SoftwareBurnVersion)
 }
 
 type SoftwareContext struct {
@@ -133,7 +145,7 @@ func softwareTaskBytes(t SoftwareTask) ([]byte, error) {
 // constrained to this tenant/task and lifetime, then its private key is erased.
 // HPKE alone hides a payload but does not establish its sender's authority.
 func SealSoftwareTask(recipient SoftwareRecipient, c SoftwareContext, plan SoftwarePlan, nonce []byte, authority *x509.Certificate, issuer crypto.Signer, now time.Time) (*SoftwareTask, error) {
-	if !recipient.Valid() || !c.Valid(now) || recipient.Identity != c.Identity || recipient.ID != c.RecipientID || len(nonce) != 32 || authority == nil || issuer == nil || !authority.IsCA || authority.KeyUsage&x509.KeyUsageCertSign == 0 || now.Before(authority.NotBefore) || authority.NotAfter.Unix() < c.ExpiresAt {
+	if !recipient.Supports(plan) || !c.Valid(now) || recipient.Identity != c.Identity || recipient.ID != c.RecipientID || len(nonce) != 32 || authority == nil || issuer == nil || !authority.IsCA || authority.KeyUsage&x509.KeyUsageCertSign == 0 || now.Before(authority.NotBefore) || authority.NotAfter.Unix() < c.ExpiresAt {
 		return nil, ErrSoftware
 	}
 	hash, err := plan.Digest()

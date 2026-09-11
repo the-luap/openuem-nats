@@ -14,7 +14,7 @@ import (
 
 func (s *AccessStore) SoftwareReady(ctx context.Context) bool {
 	var ready bool
-	err := s.db.QueryRowContext(ctx, `SELECT to_regclass('uem_agent_software_recipients') IS NOT NULL AND to_regclass('uem_agent_software_challenges') IS NOT NULL AND to_regclass('uem_agent_software_tasks') IS NOT NULL AND to_regclass('uem_agent_software_reconciliations') IS NOT NULL`).Scan(&ready)
+	err := s.db.QueryRowContext(ctx, `SELECT to_regclass('uem_agent_software_recipients') IS NOT NULL AND to_regclass('uem_agent_software_challenges') IS NOT NULL AND to_regclass('uem_agent_software_tasks') IS NOT NULL AND to_regclass('uem_agent_software_reconciliations') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('uem_agent_software_recipients') AND attname='burn_version' AND NOT attisdropped) AND EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('uem_agent_software_challenges') AND attname='burn_version' AND NOT attisdropped)`).Scan(&ready)
 	return err == nil && ready
 }
 func softwareCertificate(raw []byte) (*x509.Certificate, error) {
@@ -81,7 +81,7 @@ func softwareIdentityCurrent(ctx context.Context, tx *sql.Tx, i enrollment.Softw
 }
 func softwareRecipient(ctx context.Context, tx *sql.Tx, i enrollment.SoftwareIdentity) (*enrollment.SoftwareRecipient, error) {
 	r := &enrollment.SoftwareRecipient{Identity: i}
-	err := tx.QueryRowContext(ctx, `SELECT id,public_key FROM uem_agent_software_recipients WHERE device_id=$1 AND tenant_id=$2 AND site_id=$3 AND certificate_hash=$4`, i.AgentID, i.TenantID, i.SiteID, i.CertificateHash).Scan(&r.ID, &r.PublicKey)
+	err := tx.QueryRowContext(ctx, `SELECT id,public_key,burn_version FROM uem_agent_software_recipients WHERE device_id=$1 AND tenant_id=$2 AND site_id=$3 AND certificate_hash=$4`, i.AgentID, i.TenantID, i.SiteID, i.CertificateHash).Scan(&r.ID, &r.PublicKey, &r.BurnVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

@@ -16,6 +16,10 @@ import (
 )
 
 const SoftwareVersion = 1
+
+// SoftwareBurnVersion requires explicit recipient registration. Existing MSI/EXE
+// plans retain their canonical encoding and execution rules.
+const SoftwareBurnVersion = 1
 const SoftwareProtocol = "openuem/windows-software/v1"
 const MaxSoftwarePlan = 32 << 10
 const MaxSoftwareMessage = 64 << 10
@@ -151,7 +155,7 @@ func (a SoftwareArtifact) Valid() bool {
 }
 
 func (p SoftwarePlan) Valid() bool {
-	if (p.Kind != "windows-msi" && p.Kind != "windows-exe") || (p.Operation != "install" && p.Operation != "remove") || !softwareIdentifier.MatchString(p.Identifier) || !softwareText(p.Version, 128) || !softwareMinimumOS.MatchString(p.MinimumOS) || (p.Architecture != "amd64" && p.Architecture != "arm64") || !p.Detection.Valid() {
+	if (p.Kind != "windows-msi" && p.Kind != "windows-exe" && p.Kind != "windows-burn") || (p.Operation != "install" && p.Operation != "remove") || !softwareIdentifier.MatchString(p.Identifier) || !softwareText(p.Version, 128) || !softwareMinimumOS.MatchString(p.MinimumOS) || (p.Architecture != "amd64" && p.Architecture != "arm64") || !p.Detection.Valid() {
 		return false
 	}
 	if len(p.Arguments) > 32 || len(p.MSIProperties) > 32 || len(p.SuccessCodes) == 0 || len(p.SuccessCodes) > 16 || len(p.RebootCodes) > 16 || !slices.Contains(p.SuccessCodes, uint32(0)) {
@@ -178,9 +182,24 @@ func (p SoftwarePlan) Valid() bool {
 			return false
 		}
 	}
-	if p.Kind == "windows-exe" {
+	if p.Kind == "windows-exe" || p.Kind == "windows-burn" {
 		if p.Artifact.Format != "exe" || !p.Artifact.Valid() || len(p.Arguments) == 0 || len(p.MSIProperties) != 0 {
 			return false
+		}
+		if p.Kind == "windows-burn" {
+			// Only native 64-bit machine bundles with one exact ARP identity are
+			// eligible. The helper separately proves this identity in the binary.
+			code := p.Detection.UninstallKey
+			if p.Detection.Kind != "uninstall-key" || p.Detection.RegistryView != "64" || len(code) != 38 || code[0] != '{' || code[37] != '}' || code != strings.ToUpper(code) || !ValidDeviceID(strings.ToLower(code[1:37])) || !slices.Equal(p.SuccessCodes, []uint32{0}) || !slices.Equal(p.RebootCodes, []uint32{3010}) {
+				return false
+			}
+			args := []string{"/quiet", "/norestart"}
+			if p.Operation == "remove" {
+				args = append([]string{"/uninstall"}, args...)
+			}
+			if !slices.Equal(p.Arguments, args) {
+				return false
+			}
 		}
 	} else {
 		if p.Detection.Kind != "msi-product" || len(p.Arguments) != 0 || !slices.Equal(p.SuccessCodes, []uint32{0}) || !slices.Equal(p.RebootCodes, []uint32{3010}) {

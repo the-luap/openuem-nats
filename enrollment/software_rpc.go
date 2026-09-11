@@ -19,6 +19,7 @@ type SoftwareRequest struct {
 	RecipientID  string                `json:"recipient_id,omitempty"`
 	Result       *SoftwareResult       `json:"result,omitempty"`
 	Submission   *SoftwareSubmission   `json:"submission,omitempty"`
+	BurnVersion  int                   `json:"burn_version,omitempty"`
 }
 type SoftwareReceipt struct {
 	TaskID     string `json:"task_id"`
@@ -49,7 +50,7 @@ func decodeSoftwareJSON(data []byte, target any) error {
 }
 func DecodeSoftwareRequest(data []byte, now time.Time) (*SoftwareRequest, error) {
 	var r SoftwareRequest
-	if decodeSoftwareJSON(data, &r) != nil || r.Version != SoftwareVersion || r.Protocol != SoftwareProtocol || !ValidDeviceID(r.AgentID) {
+	if decodeSoftwareJSON(data, &r) != nil || r.Version != SoftwareVersion || r.Protocol != SoftwareProtocol || !ValidDeviceID(r.AgentID) || !validSoftwareBurnVersion(r.BurnVersion) || r.Action != "challenge" && r.BurnVersion != 0 {
 		return nil, ErrSoftware
 	}
 	switch r.Action {

@@ -41,7 +41,7 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 	switch request.Action {
 	case "challenge":
 		reply.Recipient, err = softwareRecipient(ctx, tx, current)
-		if err == nil && bytes.Equal(reply.Recipient.PublicKey, request.PublicKey) {
+		if err == nil && bytes.Equal(reply.Recipient.PublicKey, request.PublicKey) && reply.Recipient.BurnVersion == request.BurnVersion {
 			break
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
@@ -50,11 +50,11 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 		reply.Recipient = nil
 		registration := &enrollment.SoftwareRegistration{Version: enrollment.SoftwareVersion, Protocol: enrollment.SoftwareProtocol, Identity: current}
 		var expires, created time.Time
-		err = tx.QueryRowContext(ctx, `SELECT id,public_key,nonce,expires_at,created_at FROM uem_agent_software_challenges WHERE device_id=$1 AND certificate_hash=$2 AND consumed_at IS NULL`, identity.ID, current.CertificateHash).Scan(&registration.ID, &registration.PublicKey, &registration.Nonce, &expires, &created)
+		err = tx.QueryRowContext(ctx, `SELECT id,public_key,nonce,expires_at,created_at,burn_version FROM uem_agent_software_challenges WHERE device_id=$1 AND certificate_hash=$2 AND consumed_at IS NULL`, identity.ID, current.CertificateHash).Scan(&registration.ID, &registration.PublicKey, &registration.Nonce, &expires, &created, &registration.BurnVersion)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
-		if err == nil && bytes.Equal(registration.PublicKey, request.PublicKey) && expires.After(time.Now()) {
+		if err == nil && bytes.Equal(registration.PublicKey, request.PublicKey) && registration.BurnVersion == request.BurnVersion && expires.After(time.Now()) {
 			registration.ExpiresAt = expires.Unix()
 			reply.Registration = registration
 			break
@@ -68,12 +68,13 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 		}
 		registration.ID = uuid.NewString()
 		registration.PublicKey = bytes.Clone(request.PublicKey)
+		registration.BurnVersion = request.BurnVersion
 		registration.Nonce = make([]byte, 32)
 		registration.ExpiresAt = expires.Unix()
 		if _, err = rand.Read(registration.Nonce); err != nil {
 			return nil, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO uem_agent_software_challenges(device_id,id,certificate_hash,public_key,nonce,expires_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(device_id) DO UPDATE SET id=EXCLUDED.id,certificate_hash=EXCLUDED.certificate_hash,public_key=EXCLUDED.public_key,nonce=EXCLUDED.nonce,expires_at=EXCLUDED.expires_at,created_at=clock_timestamp(),consumed_at=NULL`, identity.ID, registration.ID, current.CertificateHash, registration.PublicKey, registration.Nonce, expires)
+		_, err = tx.ExecContext(ctx, `INSERT INTO uem_agent_software_challenges(device_id,id,certificate_hash,public_key,nonce,expires_at,burn_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(device_id) DO UPDATE SET id=EXCLUDED.id,certificate_hash=EXCLUDED.certificate_hash,public_key=EXCLUDED.public_key,nonce=EXCLUDED.nonce,expires_at=EXCLUDED.expires_at,burn_version=EXCLUDED.burn_version,created_at=clock_timestamp(),consumed_at=NULL`, identity.ID, registration.ID, current.CertificateHash, registration.PublicKey, registration.Nonce, expires, registration.BurnVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +85,7 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 			return nil, ErrDenied
 		}
 		previous, err := softwareRecipient(ctx, tx, current)
-		if err == nil && previous.ID == registration.ID && bytes.Equal(previous.PublicKey, registration.PublicKey) {
+		if err == nil && previous.ID == registration.ID && bytes.Equal(previous.PublicKey, registration.PublicKey) && previous.BurnVersion == registration.BurnVersion {
 			reply.Recipient = previous
 			break
 		}
@@ -92,7 +93,7 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 			return nil, err
 		}
 		var matches bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_software_challenges WHERE device_id=$1 AND id=$2 AND certificate_hash=$3 AND public_key=$4 AND nonce=$5 AND expires_at=to_timestamp($6) AND expires_at>clock_timestamp() AND consumed_at IS NULL)`, identity.ID, registration.ID, current.CertificateHash, registration.PublicKey, registration.Nonce, registration.ExpiresAt).Scan(&matches); err != nil || !matches {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM uem_agent_software_challenges WHERE device_id=$1 AND id=$2 AND certificate_hash=$3 AND public_key=$4 AND nonce=$5 AND expires_at=to_timestamp($6) AND burn_version=$7 AND expires_at>clock_timestamp() AND consumed_at IS NULL)`, identity.ID, registration.ID, current.CertificateHash, registration.PublicKey, registration.Nonce, registration.ExpiresAt, registration.BurnVersion).Scan(&matches); err != nil || !matches {
 			return nil, ErrDenied
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE uem_agent_software_tasks SET status='cancelled',completed_at=clock_timestamp() WHERE device_id=$1 AND status='pending'`, identity.ID); err != nil {
@@ -101,7 +102,7 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 		if _, err = tx.ExecContext(ctx, `UPDATE uem_agent_software_tasks SET status='uncertain' WHERE device_id=$1 AND status='delivered'`, identity.ID); err != nil {
 			return nil, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO uem_agent_software_recipients(device_id,tenant_id,site_id,id,certificate_hash,public_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(device_id) DO UPDATE SET id=EXCLUDED.id,certificate_hash=EXCLUDED.certificate_hash,public_key=EXCLUDED.public_key,registered_at=clock_timestamp()`, identity.ID, identity.TenantID, identity.SiteID, registration.ID, current.CertificateHash, registration.PublicKey)
+		_, err = tx.ExecContext(ctx, `INSERT INTO uem_agent_software_recipients(device_id,tenant_id,site_id,id,certificate_hash,public_key,burn_version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(device_id) DO UPDATE SET id=EXCLUDED.id,certificate_hash=EXCLUDED.certificate_hash,public_key=EXCLUDED.public_key,burn_version=EXCLUDED.burn_version,registered_at=clock_timestamp()`, identity.ID, identity.TenantID, identity.SiteID, registration.ID, current.CertificateHash, registration.PublicKey, registration.BurnVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +112,7 @@ func (s *AccessStore) HandleSoftwareInTransaction(ctx context.Context, tx *sql.T
 		if err = audit(ctx, tx, identity.Scope, "device:"+identity.ID, "software.recipient.registered", registration.ID); err != nil {
 			return nil, err
 		}
-		reply.Recipient = &enrollment.SoftwareRecipient{ID: registration.ID, Identity: current, PublicKey: bytes.Clone(registration.PublicKey)}
+		reply.Recipient = &enrollment.SoftwareRecipient{ID: registration.ID, Identity: current, PublicKey: bytes.Clone(registration.PublicKey), BurnVersion: registration.BurnVersion}
 	case "poll":
 		recipient, err := softwareRecipient(ctx, tx, current)
 		if err != nil || recipient.ID != request.RecipientID {

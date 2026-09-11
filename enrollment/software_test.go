@@ -326,6 +326,10 @@ func FuzzSoftwareWire(f *testing.F) {
 	now := time.Unix(1789128000, 0)
 	data, _ := json.Marshal(SoftwareRequest{Version: SoftwareVersion, Protocol: SoftwareProtocol, AgentID: "00000000-0000-4000-8000-000000000001", Action: "poll", RecipientID: "00000000-0000-4000-8000-000000000002"})
 	f.Add(data)
+	burn, _ := testBurnPlan().Canonical()
+	f.Add(burn)
+	challenge, _ := json.Marshal(SoftwareRequest{Version: SoftwareVersion, Protocol: SoftwareProtocol, AgentID: "00000000-0000-4000-8000-000000000001", Action: "challenge", PublicKey: bytes.Repeat([]byte{7}, 32), BurnVersion: SoftwareBurnVersion})
+	f.Add(challenge)
 	f.Add([]byte("{}"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > MaxSoftwareMessage+1 {

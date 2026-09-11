@@ -13,6 +13,40 @@ decryption; ordinary formatting is redacted and ordinary JSON encoding fails.
 WinGet coordinates and x86 packages are not executable plans in this protocol.
 Resolving and approving immutable WinGet artifacts remains separate work.
 
+## Explicit Burn contract
+
+`windows-burn` is distinct from `windows-exe` in the canonical signed plan. It
+requires a pinned EXE, a canonical braced bundle GUID in one 64-bit machine
+uninstall entry, native AMD64/ARM64 architecture and exact displayed version.
+The only arguments are `/quiet /norestart`, preceded by `/uninstall` for removal;
+success/restart codes remain exactly `0`/`3010`. Custom flags, MSI properties,
+x86/emulated bootstrappers and 32-bit registration views are rejected. Native
+preflight must prove the embedded bundle identity, version, machine scope and
+view before execution; a PE header and Authenticode alone do not establish them.
+
+Burn delivery requires `burn_version:1` in the current recipient's device-signed
+registration. Only a challenge may request the capability. The stored challenge
+and signature must agree, and changing capability issues a new recipient ID.
+Existing requests, registrations and recipients omit zero values, preserving
+their exact wire encoding. A legacy client asking for a challenge receives no
+new field. Unsupported versions are rejected; sealing a Burn task to a recipient
+without the capability fails before encryption or publication.
+
+Migration `014` initializes existing recipients/challenges to zero without
+rewriting tasks or receipts. Schema readiness requires both new columns. An
+unsigned challenge changes no execution authority. A committed, audited
+registration cancels pending old-recipient work and retains delivered work as
+uncertain; failed audits roll back the capability and those transitions together.
+The agent must request support only after the server advertises it and its native
+execution lifecycle is verified. The current agent still advertises no Burn
+capability, and source-derived Burn approval/dispatch remains disabled.
+
+Local race verification passes the complete module and isolated PostgreSQL
+registry suite (91.322 seconds), including legacy migration and encrypted
+capability-bound plans. The wire fuzzer passes 814,083 inputs in 20.415 seconds.
+These protocol tests execute no installer and do not establish physical endpoint
+acceptance.
+
 ## Sender and recipient authentication
 
 HPKE protects confidentiality but does not authenticate the sender. A trusted
