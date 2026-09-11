@@ -201,15 +201,16 @@ type AgentReport struct {
 }
 
 type Config struct {
-	RotationTaskVersion      int  `json:"rotation_task_version,omitempty"`
-	SoftwareTaskVersion      int  `json:"software_task_version,omitempty"`
-	RecoveryTaskVersion      int  `json:"recovery_task_version,omitempty"`
-	HardwareInventoryVersion int  `json:"hardware_inventory_version,omitempty"`
-	Ok                       bool `json:"ok,omitempty"`
-	AgentFrequency           int  `json:"agent_frequency,omitempty"`
-	WinGetFrequency          int  `json:"winget_frequency,omitempty"`
-	SFTPDisabled             bool `json:"sftp_disabled,omitempty"`
-	RemoteAssistanceDisabled bool `json:"remote_assistance_disabled,omitempty"`
+	RotationTaskVersion           int  `json:"rotation_task_version,omitempty"`
+	SoftwareTaskVersion           int  `json:"software_task_version,omitempty"`
+	SoftwareReconciliationVersion int  `json:"software_reconciliation_version,omitempty"`
+	RecoveryTaskVersion           int  `json:"recovery_task_version,omitempty"`
+	HardwareInventoryVersion      int  `json:"hardware_inventory_version,omitempty"`
+	Ok                            bool `json:"ok,omitempty"`
+	AgentFrequency                int  `json:"agent_frequency,omitempty"`
+	WinGetFrequency               int  `json:"winget_frequency,omitempty"`
+	SFTPDisabled                  bool `json:"sftp_disabled,omitempty"`
+	RemoteAssistanceDisabled      bool `json:"remote_assistance_disabled,omitempty"`
 }
 
 type Release struct {

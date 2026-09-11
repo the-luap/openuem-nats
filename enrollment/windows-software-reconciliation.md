@@ -89,6 +89,10 @@ away, and within the current device certificate lifetime.
 protocol discriminator is intended for the existing private `software` subject;
 the executable software decoder rejects it. The routing worker must explicitly
 select the matching decoder and retain its current identity/inventory locks.
+The optional configuration field `software_reconciliation_version` negotiates
+server support independently of executable software delivery. A worker advertises
+it only on an individually authenticated Windows configuration path after the
+reconciliation schema is ready. A legacy or Mac configuration leaves it zero.
 `HandleSoftwareReconciliationInTransaction` checks the subject-bound device,
 current authority, task generation, complete retained transcript and fresh current
 certificate proof. Delivery, receipt and any original reservation release are
