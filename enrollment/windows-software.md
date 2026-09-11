@@ -66,6 +66,23 @@ authorize execution after expiry or under a different certificate generation.
 
 ## Verification and remaining integration
 
+Administrative history uses `ReadSoftwareTaskInTransaction`: the caller must
+hold its current read rights and commit a read audit in the same transaction.
+The result projection contains only original scope/intent identifiers, lifecycle
+timestamps and the verified outcome. It excludes envelopes, nonces, private
+plans and certificate material. Historical receipt certificates are rechecked
+against the original authority at their signing time, even after revocation.
+The `reported` task status means a receipt was accepted; observed installation
+or removal must come from that receipt's separate outcome.
+
+`CancelSoftwareTaskInTransaction` requires current assignment authorization in
+the original site. It locks identity before task, serializing with worker
+delivery. It cancels only an undelivered pending task, retains its immutable
+history and audits the change before commit. Expired/cancelled retries do not
+create another audit. Delivered, uncertain, reported and restart-required work
+cannot be cancelled through this API or lose its reservation. Administrative
+functions are not exposed as device RPC actions.
+
 Protocol tests cover canonical bounded messages, sender/recipient/context
 tampering, separate signature domains, durable results and native outcome rules.
 PostgreSQL tests cover delivery, exact retries, audit rollback, foreign scope,

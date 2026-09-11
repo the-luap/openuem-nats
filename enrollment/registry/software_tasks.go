@@ -74,6 +74,12 @@ func loadSoftwareTask(ctx context.Context, tx *sql.Tx, scope Scope, id string) (
 		if json.Unmarshal(record.result, &result) != nil || !result.Context.Equal(c) || result.TaskHash != hash || digest(result.Nonce) != record.nonceHash || result.Identity.AgentID != agent || result.Identity.TenantID != scope.TenantID || result.Identity.SiteID != scope.SiteID || enrollment.VerifySoftwareResult(result, record.resultCertificate, time.Now()) != nil {
 			return nil, ErrDenied
 		}
+		if record.resultCertificate.CheckSignatureFrom(record.authority) != nil {
+			return nil, ErrDenied
+		}
+		if _, err = record.resultCertificate.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: time.Unix(result.SignedAt, 0), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+			return nil, ErrDenied
+		}
 		if _, err = verifiedSoftwareResultCertificate(result, record.authority, time.Now()); err != nil {
 			return nil, ErrDenied
 		}
