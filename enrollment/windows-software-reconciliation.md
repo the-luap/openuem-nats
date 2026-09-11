@@ -138,7 +138,17 @@ late original receipts, corrupted release evidence and migration of existing ret
 restart uncertainty. A short-lived signed fixture exercises actual deadline expiry,
 offline receipt recovery and cancellation of a superseded pending observation.
 
-Worker routing, agent capability advertisement, protected native reconciliation
-journals/observation execution and the explicit console review/history UI still need
-integration. This library exposes no user-facing reconciliation action on its own.
+The [worker RPC](https://github.com/the-luap/openuem-worker/blob/e06c89815841c95503dbcf294553e455b015ea0e/docs/windows-software-delivery.md)
+now routes both independent protocols on the authenticated private subject, holds
+inventory admission through commit, and advertises the exact reconciliation version
+only when migration 013 is ready. Its [native CI passes](https://github.com/the-luap/openuem-worker/actions/runs/34596892195).
+The [Windows agent](https://github.com/the-luap/openuem-agent/blob/4157fb6583725d0e0fd20f03c94183dcc9e6c9c4/docs/windows-software-reconciliation.md)
+joins protected original/result/acknowledgement history with bounded native boot
+and exact-state reads, current-certificate submission and receipt recovery. Its
+[native CI passes](https://github.com/the-luap/openuem-agent/actions/runs/34598058930),
+including required DPAPI and actual read-only helper checks. The
+[console review and history](https://github.com/the-luap/openuem-console/blob/3834fa9331f4a118504563126bb06937e1e798d9/docs/windows-software-requests.md)
+adds explicit scoped confirmation, atomic immutable review linkage, cancellation
+and verified separate outcome history. No component automatically creates a check
+or retries the original installer after release.
 Physical reboot, hibernate, offline and package acceptance remain separate requirements.
