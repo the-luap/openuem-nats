@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// RecoveryVersion adds explicit withdrawal of an unattempted command. Version
+// one encoding and digests remain unchanged; old agents cannot confirm support.
+const RecoveryVersion = 2
 const ControlLifetime = 10 * time.Second
 const MaxJournalAttempts = 4096
 
@@ -43,7 +46,7 @@ func (s State) Valid() bool {
 }
 
 // ControlRequest is an expiring state, receipt or explicit release request. For
-// release, RequestID is also the permanent resolution ID. State is read-only.
+// release/withdraw, RequestID is also the permanent resolution ID. State is read-only.
 type ControlRequest struct {
 	Version int `json:"version"`
 	Identity
@@ -53,10 +56,18 @@ type ControlRequest struct {
 	CommandHash string    `json:"command_hash"`
 	IssuedAt    time.Time `json:"issued_at"`
 	ExpiresAt   time.Time `json:"expires_at"`
+	Revision    string    `json:"revision,omitempty"`
+	Operation   string    `json:"operation,omitempty"`
 }
 
 func (c ControlRequest) Valid() bool {
-	if c.Version != Version || !c.Identity.Valid() || !ValidRequestID(c.RequestID) || c.IssuedAt.Year() < 1970 || c.IssuedAt.Year() > 9999 || c.ExpiresAt.Year() < 1970 || c.ExpiresAt.Year() > 9999 || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > ControlLifetime {
+	if (c.Version != Version && c.Version != RecoveryVersion) || !c.Identity.Valid() || !ValidRequestID(c.RequestID) || c.IssuedAt.Year() < 1970 || c.IssuedAt.Year() > 9999 || c.ExpiresAt.Year() < 1970 || c.ExpiresAt.Year() > 9999 || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > ControlLifetime {
+		return false
+	}
+	if c.Version == RecoveryVersion {
+		return (c.Kind == "receipt" || c.Kind == "withdraw") && ValidRequestID(c.ReferenceID) && ValidDigest(c.CommandHash) && ValidDigest(c.Revision) && receiptOperationValid(c.Operation)
+	}
+	if c.Revision != "" || c.Operation != "" {
 		return false
 	}
 	switch c.Kind {
@@ -84,7 +95,17 @@ func EncodeControl(c ControlRequest) ([]byte, error) {
 
 func DecodeControl(data []byte) (ControlRequest, error) {
 	var c ControlRequest
-	if decode(data, []string{"version", "device_id", "tenant_id", "site_id", "individual", "certificate_hash", "request_id", "kind", "reference_id", "command_hash", "issued_at", "expires_at"}, &c) != nil || !c.Valid() {
+	var header struct {
+		Version int `json:"version"`
+	}
+	if len(data) > MaxMessage || json.Unmarshal(data, &header) != nil {
+		return ControlRequest{}, ErrInvalid
+	}
+	fields := []string{"version", "device_id", "tenant_id", "site_id", "individual", "certificate_hash", "request_id", "kind", "reference_id", "command_hash", "issued_at", "expires_at"}
+	if header.Version == RecoveryVersion {
+		fields = append(fields, "revision", "operation")
+	}
+	if decode(data, fields, &c) != nil || !c.Valid() {
 		return ControlRequest{}, ErrInvalid
 	}
 	c.IssuedAt = c.IssuedAt.UTC()
@@ -125,12 +146,12 @@ func ControlResponseFor(c ControlRequest, outcome string) (ControlResponse, erro
 	if err != nil {
 		return ControlResponse{}, err
 	}
-	return ControlResponse{Version: Version, Identity: c.Identity, RequestID: c.RequestID, RequestHash: hash, Kind: c.Kind, Outcome: outcome}, nil
+	return ControlResponse{Version: c.Version, Identity: c.Identity, RequestID: c.RequestID, RequestHash: hash, Kind: c.Kind, Outcome: outcome}, nil
 }
 
 func (r ControlResponse) Matches(c ControlRequest) bool {
 	hash, err := c.Digest()
-	if err != nil || r.Version != Version || r.Identity != c.Identity || r.RequestID != c.RequestID || r.RequestHash != hash || r.Kind != c.Kind {
+	if err != nil || r.Version != c.Version || r.Identity != c.Identity || r.RequestID != c.RequestID || r.RequestHash != hash || r.Kind != c.Kind {
 		return false
 	}
 	if r.Outcome != "ok" {
@@ -144,8 +165,21 @@ func (r ControlResponse) Matches(c ControlRequest) bool {
 	switch r.Kind {
 	case "state", "registration-state":
 		return r.State.Valid() && r.Receipt == (Receipt{}) && r.ReleaseID == ""
-	case "receipt", "release":
-		if r.State != (State{}) || !r.Receipt.Valid() || (r.Receipt.Status != "completed" && r.Receipt.Status != "unconfirmed") || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash {
+	case "receipt", "release", "withdraw":
+		if r.State != (State{}) || !r.Receipt.Valid() || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash {
+			return false
+		}
+		if c.Version == RecoveryVersion && (r.Receipt.Revision != c.Revision || r.Receipt.Operation != c.Operation) {
+			return false
+		}
+		switch r.Receipt.Status {
+		case "withdrawn":
+			return c.Version == RecoveryVersion && ValidRequestID(r.ReleaseID) && (r.Kind == "receipt" || r.Kind == "withdraw" && r.ReleaseID == c.RequestID)
+		case "completed", "unconfirmed":
+			if r.Kind == "withdraw" {
+				return false
+			}
+		default:
 			return false
 		}
 		if r.ReleaseID != "" && (!ValidRequestID(r.ReleaseID) || r.Receipt.Status != "unconfirmed") {

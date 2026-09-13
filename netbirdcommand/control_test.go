@@ -120,6 +120,10 @@ func TestControlReceiptRequiresRetainedExecutionEvidence(t *testing.T) {
 }
 
 func FuzzControl(f *testing.F) {
+	for _, kind := range []string{"receipt", "withdraw"} {
+		data, _ := EncodeControl(withdrawalControl(kind))
+		f.Add(data)
+	}
 	registration := control("state")
 	registration.Kind = "registration-state"
 	data, _ := EncodeControl(registration)

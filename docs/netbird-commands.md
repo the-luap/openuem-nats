@@ -87,3 +87,30 @@ only for the exact requested resolution UUID; another release is a conflict.
 Queries never release a barrier, and a release never turns uncertainty into
 success. Missing, blocked, conflicting and unavailable responses carry no
 payload. Empty, stale or mismatched replies provide no authority to proceed.
+
+## Explicit withdrawal of an unattempted command
+
+`RecoveryVersion` (control version 2) supports `receipt` and `withdraw` on the
+same authenticated control subject. It additionally requires the original
+`revision` and `operation`, alongside the command UUID and complete digest.
+Version-one control fields, encoding and hashes remain unchanged. A correlated
+version-two response is required to establish recovery support; a legacy missing
+receipt is insufficient.
+
+A withdrawal must atomically check that no execution attempt exists, persist and
+sync a permanent denial for the original UUID, and only then return a `withdrawn`
+receipt with its resolution UUID in `release_id`. Its receipt retains the same
+bounded metadata shape and never includes a setup key. `withdrawn` is evidence
+of durable non-admission, not command completion. Late commands with that UUID
+must never execute, including after restart, expiry or certificate renewal.
+A same-identity withdrawal replay is idempotent; conflicting reference metadata
+or another withdrawal UUID must fail. Existing execution attempts cannot be
+converted into withdrawals.
+
+Version-two receipt queries can recover the retained withdrawal and its exact
+resolution UUID using current device authority. They remain read-only and can
+also return matching completed/unconfirmed execution receipts. A version-one
+control response cannot establish withdrawal proof. Current identity, service
+cancellation, ten-second expiry, bounded storage and failed-publication rules
+continue to apply. Provider cleanup and console resolution admission must be
+coordinated separately before further device commands are allowed.

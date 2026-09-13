@@ -183,11 +183,11 @@ func (r Receipt) Valid() bool {
 	if r.Version != Version || !ValidRequestID(r.RequestID) || !ValidDeviceID(r.DeviceID) || !ValidDigest(r.Revision) || !ValidDigest(r.CommandHash) {
 		return false
 	}
-	if r.Operation != "up" && r.Operation != "down" && r.Operation != "switchprofile" && r.Operation != "register" {
+	if !receiptOperationValid(r.Operation) {
 		return false
 	}
 	switch r.Status {
-	case "completed", "unconfirmed", "rejected", "busy":
+	case "completed", "unconfirmed", "rejected", "busy", "withdrawn":
 		return true
 	default:
 		return false
@@ -204,4 +204,8 @@ func EncodeReceipt(r Receipt) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	return json.Marshal(r)
+}
+
+func receiptOperationValid(operation string) bool {
+	return operation == "up" || operation == "down" || operation == "switchprofile" || operation == "register"
 }
