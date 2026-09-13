@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -187,5 +188,38 @@ func TestNetbirdRejectsUnsafeSetupKeyResults(t *testing.T) {
 		if result != nil || !errors.Is(err, ErrUnavailable) {
 			t.Fatal("unsafe setup-key result was accepted")
 		}
+	}
+}
+
+func TestNetbirdFullLegacyGroupListFitsStructuredRequest(t *testing.T) {
+	groups := make([]string, 250)
+	for i := range groups {
+		groups[i] = fmt.Sprintf("%0128d", i)
+	}
+	encoded, err := json.Marshal(groups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseGroups(string(encoded[1 : len(encoded)-1]))
+	if err != nil {
+		t.Fatal("valid legacy group list was rejected")
+	}
+	var calls atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequest+1))
+		if err != nil || len(body) > MaxRequest {
+			t.Error("setup-key request exceeded its bound")
+		}
+		var payload setupRequest
+		if json.Unmarshal(body, &payload) != nil || len(payload.Groups) != len(groups) {
+			t.Error("structured request lost legacy groups")
+		}
+		_, _ = io.WriteString(w, `{"id":"owned-key","key":"owned-new-key","valid":true,"type":"one-off","usage_limit":1}`)
+	}))
+	defer server.Close()
+	result, err := CreateOneOffKey(t.Context(), server.Client().Transport, server.URL, "owned", "owned-agent", parsed, false)
+	if err != nil || result == nil || calls.Load() != 1 {
+		t.Fatal("fixed request fields made a valid legacy group list unusable")
 	}
 }

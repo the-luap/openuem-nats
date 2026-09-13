@@ -4,7 +4,7 @@
 configured HTTPS origin with an optional path prefix. Query values are encoded;
 credentials, fragments, query-bearing base URLs and path traversal are rejected.
 Redirects are never followed. Requests have a five-second total limit, response
-bodies are limited to one MiB, and provider/network errors return a neutral error.
+bodies are limited to one MiB and requests to 64 KiB, and provider/network errors return a neutral error.
 The default transport verifies certificates and requires TLS 1.2 or newer.
 A caller may supply an owned transport for tests or explicit trust configuration.
 

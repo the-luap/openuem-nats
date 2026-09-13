@@ -20,6 +20,9 @@ var ErrUnavailable = errors.New("NetBird request could not be confirmed")
 
 const MaxResponse = 1 << 20
 
+// Reserve room for fixed setup-key fields around the 32 KiB legacy group list.
+const MaxRequest = 64 << 10
+
 var defaultTransport = &http.Transport{
 	Proxy:                 http.ProxyFromEnvironment,
 	DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -83,7 +86,7 @@ func request(ctx context.Context, transport http.RoundTripper, base, token, meth
 	var body io.Reader
 	if payload != nil {
 		data, err := json.Marshal(payload)
-		if err != nil || len(data) > 32768 {
+		if err != nil || len(data) > MaxRequest {
 			return nil, ErrUnavailable
 		}
 		body = bytes.NewReader(data)
