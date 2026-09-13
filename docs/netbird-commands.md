@@ -47,3 +47,27 @@ returns an empty acknowledgement cannot satisfy this protocol.
 Tests cover identity and lifetime boundaries, canonical digests, malformed wire
 messages, forbidden operations/targets and round trips; the decoder also provides
 a fuzz target. Real device and provider acceptance remain separate checks.
+
+## Live journal control
+
+`agent.netbird.control.<device>` carries a separate ten-second envelope for
+read-only `state` and `receipt` queries and explicit `release`. Every request
+binds the current local identity, a fresh request UUID and its lifetime. Receipt
+and release requests also require the original command UUID and full wire
+digest. The release request UUID is the immutable resolution identity.
+
+Responses bind the complete canonical request digest and current identity.
+Their nested state and receipt objects obey the same exact field rules as the
+envelope. A state is `ready`, `full`, `busy`, `unconfirmed` or `unavailable`.
+Readiness includes a revision, remaining capacity (at most 4096 attempts), and
+the pending command identity and release eligibility when applicable. Callers
+must require a live `ready` result before admitting a new device command.
+
+Receipt queries return only retained `completed` or `unconfirmed` evidence,
+optionally including the recorded release UUID. They permit reviewing an older
+certificate's command under the current authenticated identity without
+reconstructing or delivering that old command. A release response is positive
+only for the exact requested resolution UUID; another release is a conflict.
+Queries never release a barrier, and a release never turns uncertainty into
+success. Missing, blocked, conflicting and unavailable responses carry no
+payload. Empty, stale or mismatched replies provide no authority to proceed.
