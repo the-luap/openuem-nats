@@ -12,8 +12,24 @@ organization/site, enrollment mode, certificate hash, reviewed source revision,
 operation, management URL, profile, issue time and expiry. Individual targets
 require a canonical device UUID and certificate digest. Legacy targets have no
 certificate digest and retain the limitations of shared broker credentials.
-Only `up`, `down` and `switchprofile` are admitted. Provider registration keys and
-installation scripts are not part of this protocol.
+Version 1 admits `up`, `down` and `switchprofile` and its canonical encoding stays
+unchanged. Version 2 exclusively admits `register` with a required, bounded
+`setup_key` and empty profile. It carries only the one-off key, never a provider
+access token. Installation scripts are not part of this protocol.
+
+Before creating a key, registration callers must require a successful correlated
+`registration-state` control query. A normal `state` response does not establish
+registration support; older agents reject the new control kind. Both return the
+same bounded journal state under current identity and certificate lifetime.
+Registration uses the existing permanent journal and command subject, so it
+cannot overlap connection commands or bypass unresolved work.
+
+The complete version 2 digest includes the registration key. Receipts retain
+their version 1 shape and bind that digest and the `register` operation. Neither
+the receipt nor the agent journal stores the key. Command/key diagnostic
+formatting is redacted; callers must still avoid logging serialized wire bodies.
+The protocol does not itself perform provider admission, encrypted result
+storage, cleanup or authoritative peer association.
 
 Encoding and decoding reject missing, null, duplicate, case-alias and unknown
 fields; invalid types/UTF-8; trailing documents; invalid identifiers; unsafe URLs;

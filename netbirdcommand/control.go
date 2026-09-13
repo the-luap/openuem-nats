@@ -60,7 +60,7 @@ func (c ControlRequest) Valid() bool {
 		return false
 	}
 	switch c.Kind {
-	case "state":
+	case "state", "registration-state":
 		return c.ReferenceID == "" && c.CommandHash == ""
 	case "receipt", "release":
 		return ValidRequestID(c.ReferenceID) && ValidDigest(c.CommandHash)
@@ -142,7 +142,7 @@ func (r ControlResponse) Matches(c ControlRequest) bool {
 		}
 	}
 	switch r.Kind {
-	case "state":
+	case "state", "registration-state":
 		return r.State.Valid() && r.Receipt == (Receipt{}) && r.ReleaseID == ""
 	case "receipt", "release":
 		if r.State != (State{}) || !r.Receipt.Valid() || (r.Receipt.Status != "completed" && r.Receipt.Status != "unconfirmed") || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash {

@@ -57,7 +57,19 @@ func decode(data []byte, fields []string, out any) error {
 
 func Decode(data []byte) (Command, error) {
 	var c Command
-	if err := decode(data, []string{"version", "device_id", "tenant_id", "site_id", "individual", "certificate_hash", "request_id", "revision", "operation", "management_url", "profile", "issued_at", "expires_at"}, &c); err != nil || !c.Valid() {
+	// The preliminary read selects a schema only. The complete strict decoder
+	// below still rejects duplicate/aliased versions and every unknown field.
+	var header struct {
+		Version int `json:"version"`
+	}
+	if len(data) > MaxMessage || json.Unmarshal(data, &header) != nil {
+		return Command{}, ErrInvalid
+	}
+	fields := []string{"version", "device_id", "tenant_id", "site_id", "individual", "certificate_hash", "request_id", "revision", "operation", "management_url", "profile", "issued_at", "expires_at"}
+	if header.Version == RegistrationVersion {
+		fields = append(fields, "setup_key")
+	}
+	if err := decode(data, fields, &c); err != nil || !c.Valid() {
 		return Command{}, ErrInvalid
 	}
 	c.IssuedAt = c.IssuedAt.UTC()

@@ -77,8 +77,13 @@ func identifier(id string) bool {
 // request never follows redirects, forwards provider errors, or retries a
 // changing request. A POST failure can be an unconfirmed remote side effect.
 func request(ctx context.Context, transport http.RoundTripper, base, token, method, path string, query url.Values, payload any) ([]byte, error) {
+	data, _, err := requestObserved(ctx, transport, base, token, method, path, query, payload, false)
+	return data, err
+}
+
+func requestObserved(ctx context.Context, transport http.RoundTripper, base, token, method, path string, query url.Values, payload any, allowMissing bool) ([]byte, bool, error) {
 	if !ValidBase(base) || !validToken(token) {
-		return nil, ErrUnavailable
+		return nil, false, ErrUnavailable
 	}
 	u, _ := url.Parse(base)
 	u.Path = strings.TrimRight(u.Path, "/") + "/api/" + path
@@ -87,13 +92,13 @@ func request(ctx context.Context, transport http.RoundTripper, base, token, meth
 	if payload != nil {
 		data, err := json.Marshal(payload)
 		if err != nil || len(data) > MaxRequest {
-			return nil, ErrUnavailable
+			return nil, false, ErrUnavailable
 		}
 		body = bytes.NewReader(data)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, false, ErrUnavailable
 	}
 	// Disable replay of changing bodies by the transport after a broken reused
 	// connection. No idempotency header is supplied for provider mutations.
@@ -111,7 +116,7 @@ func request(ctx context.Context, transport http.RoundTripper, base, token, meth
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, false, ErrUnavailable
 	}
 	defer response.Body.Close()
 	valid := response.StatusCode == http.StatusOK
@@ -121,17 +126,19 @@ func request(ctx context.Context, transport http.RoundTripper, base, token, meth
 	if method == http.MethodDelete {
 		valid = valid || response.StatusCode == http.StatusNoContent
 	}
+	missing := allowMissing && method == http.MethodGet && response.StatusCode == http.StatusNotFound
+	valid = valid || missing
 	if !valid {
-		return nil, ErrUnavailable
+		return nil, false, ErrUnavailable
 	}
 	if response.ContentLength > MaxResponse {
-		return nil, ErrUnavailable
+		return nil, false, ErrUnavailable
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, MaxResponse+1))
 	if err != nil || len(data) > MaxResponse || !utf8.Valid(data) {
-		return nil, ErrUnavailable
+		return nil, false, ErrUnavailable
 	}
-	return data, nil
+	return data, missing, nil
 }
 
 type peer struct {

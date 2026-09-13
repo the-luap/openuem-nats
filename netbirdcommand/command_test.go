@@ -133,6 +133,8 @@ func TestCommandDigestNormalizesTimeButBindsEveryInput(t *testing.T) {
 func FuzzDecodeCommand(f *testing.F) {
 	data, _ := Encode(command())
 	f.Add(data)
+	registration, _ := Encode(registrationCommand())
+	f.Add(registration)
 	f.Add([]byte(`{"version":1}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		c, err := Decode(data)

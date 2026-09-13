@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	Version        = 1
-	MaxMessage     = 16 << 10
-	Lifetime       = 2 * time.Minute
-	ClockAllowance = 5 * time.Second
+	Version             = 1
+	RegistrationVersion = 2
+	MaxMessage          = 16 << 10
+	Lifetime            = 2 * time.Minute
+	ClockAllowance      = 5 * time.Second
 )
 
 var ErrInvalid = errors.New("invalid NetBird command or receipt")
@@ -44,6 +45,7 @@ type Command struct {
 	Operation     string    `json:"operation"`
 	ManagementURL string    `json:"management_url"`
 	Profile       string    `json:"profile"`
+	SetupKey      string    `json:"setup_key,omitempty"`
 	IssuedAt      time.Time `json:"issued_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }
@@ -57,6 +59,11 @@ type Receipt struct {
 	Operation   string `json:"operation"`
 	Status      string `json:"status"`
 }
+
+// Diagnostic formatting never includes the one-off registration credential.
+// Encode is the explicit wire serialization API and does include that field.
+func (c Command) String() string   { return "NetBird command (credential redacted)" }
+func (c Command) GoString() string { return c.String() }
 
 func ValidRequestID(id string) bool {
 	parsed, err := uuid.Parse(id)
@@ -103,10 +110,23 @@ func operationValid(operation, profile string) bool {
 // Valid checks immutable syntax independently of the clock, so retained records
 // can still be inspected after expiry. It never authorizes execution by itself.
 func (c Command) Valid() bool {
-	return c.Version == Version && c.Identity.Valid() && ValidRequestID(c.RequestID) && ValidDigest(c.Revision) &&
-		operationValid(c.Operation, c.Profile) && len(c.ManagementURL) <= 2048 && netbirdapi.ValidBase(c.ManagementURL) &&
+	operation := c.Version == Version && operationValid(c.Operation, c.Profile) && c.SetupKey == "" || c.Version == RegistrationVersion && c.Operation == "register" && c.Profile == "" && validSetupKey(c.SetupKey)
+	return operation && c.Identity.Valid() && ValidRequestID(c.RequestID) && ValidDigest(c.Revision) &&
+		len(c.ManagementURL) <= 2048 && netbirdapi.ValidBase(c.ManagementURL) &&
 		c.IssuedAt.Year() >= 1970 && c.IssuedAt.Year() <= 9999 && c.ExpiresAt.Year() >= 1970 && c.ExpiresAt.Year() <= 9999 &&
 		c.ExpiresAt.After(c.IssuedAt) && c.ExpiresAt.Sub(c.IssuedAt) <= Lifetime
+}
+
+func validSetupKey(key string) bool {
+	if len(key) == 0 || len(key) > 512 {
+		return false
+	}
+	for _, r := range key {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // Executable requires the current trusted local identity and an unexpired
@@ -163,7 +183,7 @@ func (r Receipt) Valid() bool {
 	if r.Version != Version || !ValidRequestID(r.RequestID) || !ValidDeviceID(r.DeviceID) || !ValidDigest(r.Revision) || !ValidDigest(r.CommandHash) {
 		return false
 	}
-	if r.Operation != "up" && r.Operation != "down" && r.Operation != "switchprofile" {
+	if r.Operation != "up" && r.Operation != "down" && r.Operation != "switchprofile" && r.Operation != "register" {
 		return false
 	}
 	switch r.Status {
