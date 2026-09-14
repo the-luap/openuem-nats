@@ -71,6 +71,8 @@ func (c ControlRequest) Valid() bool {
 		return false
 	}
 	switch c.Kind {
+	case "preparation-state":
+		return c.Individual && c.ReferenceID == "" && c.CommandHash == ""
 	case "state", "registration-state":
 		return c.ReferenceID == "" && c.CommandHash == ""
 	case "receipt", "release":
@@ -163,7 +165,7 @@ func (r ControlResponse) Matches(c ControlRequest) bool {
 		}
 	}
 	switch r.Kind {
-	case "state", "registration-state":
+	case "state", "registration-state", "preparation-state":
 		return r.State.Valid() && r.Receipt == (Receipt{}) && r.ReleaseID == ""
 	case "receipt", "release", "withdraw":
 		if r.State != (State{}) || !r.Receipt.Valid() || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash || r.Receipt.Operation == "install" && !c.Individual {

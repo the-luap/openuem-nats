@@ -156,5 +156,36 @@ executor has no installation runner and rejects new install commands before
 persisting an attempt. The console connection/registration publisher also rejects
 them; it cannot substitute for a package-aware durable admission path. Ordinary
 or registration journal readiness does not advertise installation capability.
-Authenticated preparation/delivery, console durable admission, native execution,
-verified final state and lifecycle UI remain integration work.
+The agent now exposes the authenticated preparation protocol below. Console
+preparation/delivery admission, native execution, verified final state and
+lifecycle UI remain integration work.
+
+## Authenticated private package preparation
+
+`PreparationVersion` is a separate version-one protocol on
+`agent.netbird.prepare.<device UUID>`. It grants download and native inspection,
+never execution. The strict envelope contains the current individual identity,
+request UUID, reviewed installation revision, live journal revision, exact private
+package descriptor and issue/expiry times. Its maximum lifetime is ten minutes;
+the agent independently bounds preparation to five minutes and certificate expiry.
+Explicit encoding is required: ordinary JSON and diagnostic formatting cannot
+expose the source. Unknown fields, duplicates, aliases, missing/null values and
+invalid nested descriptors fail before preparation.
+
+The correlated response contains only version, current identity, request UUID,
+complete request hash and `prepared`, `blocked`, `conflict` or `unavailable`.
+It contains no source, path or execution receipt. A prepared result is ephemeral:
+the same live owner retains the artifact only until its request expires, journal
+state changes or the service closes. An exact replay rechecks the file; altered
+input cannot inherit it. Restart discards abandoned staged bytes. This protocol
+does not retain permanent download attempts or prove current approval revocation.
+
+The individual-only `preparation-state` control explicitly discovers a configured
+preparation service and its current journal state. Ordinary and registration state
+do not establish this capability. A bare journal or service without native
+preparation responds without preparation readiness. Existing broker subject
+permissions cover the new exact target; no stream filter or automatic retry is
+added. The agent serializes downloads with managed commands and rechecks journal
+readiness after inspection. The console must separately retain preparation intent,
+authenticate current approval and recipient, and recheck them before fresh native
+installation admission. Preparation readiness never advertises an installer.
