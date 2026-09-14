@@ -96,3 +96,9 @@ inventory race suite, registered HTTP routes, 2,640 browser cases and Linux ARM6
 builds pass. Retained local staging recovery, Linux individual enrollment/publisher
 trust and real package/daemon/device acceptance remain required. No vendor package
 or enrolled device was removed by these fixtures.
+
+[Manifest-backed removal recovery](netbird-removal-recovery.md) now adds a
+separate version-five command and version-four native inspection. Exact original
+uninstall/release evidence and the current journal revision precede new native
+admission; retained original results remain immutable. Console lifecycle and
+absent-manifest policies remain separate requirements.

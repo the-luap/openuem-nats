@@ -265,3 +265,9 @@ version-three read-only inspection response. The agent requires its own native
 owner and inspected journal revision before admission, retains uncertainty and
 withdrawal under the common barrier, and rejects new removal without that owner.
 Existing connection/installation publishers cannot deliver this new family.
+
+[Manifest-backed removal recovery](netbird-removal-recovery.md) now adds a
+separate version-five command and version-four native inspection. Exact original
+uninstall/release evidence and the current journal revision precede new native
+admission; retained original results remain immutable. Console lifecycle and
+absent-manifest policies remain separate requirements.
