@@ -57,7 +57,7 @@ inspection and acquisition; drift discards the review before mutation.
 
 Version-two retained receipt and permanent withdrawal controls bind this exact
 new operation and require individual identity. An owned version-one release
-retains the uncertainty of an exact completed local attempt. Controls cannot
+retains the uncertainty of an exact unconfirmed entry after local execution has ended. Controls cannot
 rewrite cleanup evidence as absence verification or original removal success.
 
 ## Wire and compatibility
@@ -76,3 +76,13 @@ identity, scope, times, all native inspection outcomes, cross-operation refusal,
 old grammar compatibility, required nested fields and receipt/withdrawal
 correlation. The cleanup fuzz target passed 216,584 inputs in 11.441 seconds.
 The protocol does not itself install a remote handler or console action.
+
+
+The [native owner and agent journal/service integration](https://github.com/the-luap/openuem-agent/blob/66404dc8faf209ef091c2fc696e710e2ffb8692a/docs/netbird-removal-stage-cleanup.md)
+now implement these admission rules, paired capability configuration, summary
+binding, one durable attempt, joined completion and exact replay. Full native,
+journal and command races, isolated Linux suites and all three platform builds
+passed. The console has a dedicated one-attempt publisher with exact response
+validation; its complete scoped cleanup admission and operator workflow remain
+open. Consumers pin runtime commit `8685f28fa959d05a0c9bd300dc2c79c5195bbd4b`;
+subsequent documentation updates do not change that module pin.
