@@ -23,8 +23,11 @@ and current recipient, encrypt private source data when stored, enforce current
 scope and validity, retain a durable attempt before mutation and verify native
 package identity and requested state. A digest match alone does not establish
 those facts. Existing NetBird command versions do not accept installer commands;
-console approval/admission, native execution and lifecycle recovery still need
-integration before installation can be enabled.
+the console's [organization approval storage](https://github.com/the-luap/openuem-console/blob/fc5a2ae12c5cb47b47e1ff453e2d84b8ee09f895/docs/netbird-package-approvals.md)
+and the agent's native preflight exist, but authenticated installer delivery,
+durable admission, native execution and lifecycle recovery still need integration
+before installation can be enabled. This documentation update does not change the
+descriptor or require consumers to replace their existing immutable module pin.
 
 The official [macOS installation documentation](https://docs.netbird.io/get-started/install/macos)
 distinguishes signed official PKG installers from unsigned GitHub binary tarballs
