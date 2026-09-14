@@ -159,9 +159,11 @@ protected vendor CLI link before retaining a completed result. Agents without
 that native owner reject new commands before persisting an attempt. The console
 connection/registration publisher still rejects this version. A separate native
 publisher now follows exact package-aware durable admission, fresh authority and
-preparation checks. Only a verified completed receipt opens console admission;
-lost results use read-only receipt recovery without redelivery. Explicit uncertain
-withdrawal/release, dispatch and lifecycle UI remain integration work. Console
+preparation checks. A verified completed receipt opens console admission; lost
+results use read-only receipt recovery without redelivery. Separately reviewed
+withdrawal/release now require expiring reviews and exact owned proof before the
+console barrier opens, preserving the uncertain original result. Dispatch and
+lifecycle UI remain integration work. Console
 preparation retains exact attempt/results around one bounded direct RPC after
 current approval and both capability checks. Local removal and Linux publisher
 trust remain separate.
@@ -233,4 +235,7 @@ completed receipt opens the common device barrier; the request UUID remains
 reserved. Version-two read-only receipt queries under the current certificate
 can recover completion after response loss without rewriting the original
 uncertain result. Missing, withdrawn or released observations do not substitute
-for the still-separate reviewed withdrawal/release workflow.
+for [reviewed withdrawal/release](https://github.com/the-luap/openuem-console/blob/ab17d569a9a3ea56823b16274503ec0827b6eefc/docs/netbird-installation-resolutions.md). That separate workflow retains a permanent resolution UUID, expiring current-authority
+reviews and one immutable attempt per consumed review. Read-only queries recover
+lost replies only with exact owned proof. Another control requires a new explicit
+review; no native command is retried and release is distinct from completion.
