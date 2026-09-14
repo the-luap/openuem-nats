@@ -163,8 +163,9 @@ preparation checks. A verified completed receipt opens console admission; lost
 results use read-only receipt recovery without redelivery. Separately reviewed
 withdrawal/release now require expiring reviews and exact owned proof before the
 console barrier opens, preserving the uncertain original result. Automatic
-dispatch now binds the native store to joined inventory workers; device lifecycle
-UI remains integration work. Console
+dispatch now binds the native store to joined inventory workers; the
+[device lifecycle UI](https://github.com/the-luap/openuem-console/blob/3199b9ba73fd0b990bbd933727a5cdaebf426d77/docs/netbird-installation-ui.md) exposes scoped package review, retained progress
+and explicitly reviewed recovery. Console
 preparation retains exact attempt/results around one bounded direct RPC after
 current approval and both capability checks. Local removal and Linux publisher
 trust remain separate.
@@ -247,3 +248,11 @@ concurrent workers; only successful retained preparation may resume. Uncertain
 preparation/native attempts never redeliver automatically. Preflight stops retain
 a safe reason and the common barrier until explicit pre-install cancellation.
 The protocol and consumer runtime pin are unchanged.
+
+The [console installation pages](https://github.com/the-luap/openuem-console/blob/3199b9ba73fd0b990bbd933727a5cdaebf426d77/docs/netbird-installation-ui.md) now expose scoped approved-package
+choice, exact reviewed admission, source-free receipts and history, pre-native
+cancellation and expiring withdrawal/release review. Fresh read-only observations
+and recovery reconciliation do not send another native command. All 90 new and
+2,562 total browser cases pass, along with complete console inventory/audit/view
+race suites, real registered HTTP routes and the Linux console build. This UI
+integration changes no wire grammar, agent consumer or runtime dependency pin.
