@@ -53,5 +53,8 @@ response is not an execution receipt and never authorizes stage cleanup.
 
 Codec, receipt, legacy/mutating separation and strict nested-decoder tests pass
 under the race detector. Fuzzing checks stable decode/encode behavior across
-commands, inspection requests and responses. Agent and console runtime wiring
-are separate integration work; this module does not dispatch native commands.
+commands, inspection requests and responses. The [agent integration](https://github.com/the-luap/openuem-agent/blob/acc9fa2039384e232bf510f874a982040b69bff1/docs/netbird-removal-current-absence.md)
+now joins the native observer with independent journal admission and retained
+results. The console has a dedicated publisher and inspection transport; its
+scoped request/delivery/resolution/history/UI lifecycle remains open. This
+module itself does not dispatch native commands.
