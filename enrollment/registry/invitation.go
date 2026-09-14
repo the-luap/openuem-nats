@@ -50,7 +50,7 @@ func (s *Store) Invite(ctx context.Context, options InvitationOptions, actor str
 // same registry database and roll it back on any error.
 func (s *Store) InviteInTransaction(ctx context.Context, tx *sql.Tx, options InvitationOptions, actor string) (*Invitation, error) {
 	now := time.Now()
-	if tx == nil || !options.Scope.valid() || options.SiteID == 0 || (options.Platform != "windows" && options.Platform != "macos") || (options.Architecture != "amd64" && options.Architecture != "arm64") || options.MaxUses < 1 || options.MaxUses > 1000 || !options.ExpiresAt.After(now) || options.ExpiresAt.After(now.Add(7*24*time.Hour)) {
+	if tx == nil || !options.Scope.valid() || options.SiteID == 0 || (options.Platform != "windows" && options.Platform != "macos" && options.Platform != "linux") || (options.Architecture != "amd64" && options.Architecture != "arm64") || options.MaxUses < 1 || options.MaxUses > 1000 || !options.ExpiresAt.After(now) || options.ExpiresAt.After(now.Add(7*24*time.Hour)) {
 		return nil, ErrInvalid
 	}
 	token, err := newToken()

@@ -89,7 +89,7 @@ func TestEnrollmentRejectsWeakOrInvalidCSRAndUnsupportedDevices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range [][2]string{{"linux", "amd64"}, {"windows", "386"}, {"macos", ""}} {
+	for _, target := range [][2]string{{"freebsd", "amd64"}, {"windows", "386"}, {"macos", ""}, {"Linux", "amd64"}, {"linux", "386"}} {
 		if _, err = keys.Request(testToken(t), target[0], target[1], "Device"); !errors.Is(err, ErrInvalidProof) {
 			t.Fatal("unsupported target accepted", target, err)
 		}

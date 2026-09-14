@@ -257,6 +257,9 @@ func FuzzIdentityRenewalWire(f *testing.F) {
 		f.Fatal(err)
 	}
 	f.Add(seed)
+	linux := bytes.Replace(seed, []byte(`"platform":"windows"`), []byte(`"platform":"linux"`), 1)
+	f.Add(linux)
+	f.Add(bytes.Replace(linux, []byte(`"architecture":"amd64"`), []byte(`"architecture":"arm64"`), 1))
 	f.Add([]byte(`{"version":1,"protocol":"identity-renewal"}`))
 	f.Add([]byte(`{"version":1,"version":1}`))
 	f.Add([]byte(`{"csr":"%%%"}`))

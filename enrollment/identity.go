@@ -67,7 +67,7 @@ func ValidToken(token string) bool {
 }
 
 func validTarget(platform, architecture string) bool {
-	return (platform == "windows" || platform == "macos") && (architecture == "amd64" || architecture == "arm64")
+	return (platform == "windows" || platform == "macos" || platform == "linux") && (architecture == "amd64" || architecture == "arm64")
 }
 
 func (k *Keys) Request(invitation, platform, architecture, deviceName string) (*Request, error) {

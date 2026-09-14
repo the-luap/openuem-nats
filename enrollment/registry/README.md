@@ -21,6 +21,21 @@ server-named client-auth certificate for the endpoint's RSA key. The certificate
 lasts at most 90 days and cannot outlive its CA. Requested CSR subjects, SANs and
 extensions confer no authority. The server generates no endpoint private key.
 
+Platform admission accepts exact Windows, Mac and Linux identifiers (`windows`,
+`macos`, `linux`) with `amd64` or `arm64`. Migration 015 extends only the existing
+platform constraints. Existing invitations, identities, key reservations, command
+consumers and renewal history remain intact. It does not change platform-specific
+command permissions or independently approve any Linux package or activation.
+
+Owned Linux fixtures prove one concurrent claim outcome, exact target and scoped
+key ownership, revocation, unchanged pre-migration Windows recovery, and rejected
+unknown database platforms. Renewal fixtures prove that prepared Linux candidate
+keys remain inactive until confirmation, old certificate/broker keys then cease
+to authorize access, and restart recovers the exact committed identity handoff.
+The full shared race suite passes, including the PostgreSQL registry (90.961
+seconds); the final Linux and existing renewal registry checks pass in 36.078
+seconds after extending their fixture to both Linux architectures.
+
 Concurrent retries with the same keys return the same public identity and
 certificate without another use. A key already registered under any invitation
 cannot create a second identity. Expired/revoked invitations stop all further

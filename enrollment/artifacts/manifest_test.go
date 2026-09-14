@@ -144,12 +144,15 @@ func TestEverySupportedInstallerTargetAndReleaseKeyRotation(t *testing.T) {
 	manifest, public, private, content, now := fixture(t)
 	item := manifest.Artifacts[0]
 	manifest.Artifacts = nil
-	for _, platform := range []string{"windows", "macos"} {
+	for _, platform := range []string{"windows", "macos", "linux"} {
 		for _, architecture := range []string{"amd64", "arm64"} {
 			artifact := item
 			artifact.Platform, artifact.Architecture = platform, architecture
 			if platform == "macos" {
 				artifact.Format = "pkg"
+			}
+			if platform == "linux" {
+				artifact.Format = "deb"
 			}
 			artifact.Filename = "openuem-agent-" + manifest.Version + "-" + platform + "-" + architecture + "." + artifact.Format
 			manifest.Artifacts = append(manifest.Artifacts, artifact)

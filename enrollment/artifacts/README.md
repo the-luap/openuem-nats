@@ -5,9 +5,13 @@ console and endpoint bootstrap. It does not download files, sign native binaries
 prove Windows Authenticode trust or perform Apple notarization. Release pipelines
 must complete and verify those platform steps before approving package bytes.
 
-A schema-1 manifest describes one version and up to four Windows/Mac targets:
-`windows` or `macos`, each with `amd64` or `arm64`. Windows supports `exe`/`msi`;
-Mac supports `pkg`. No target is inferred or substituted. The exact filename is
+A schema-1 manifest describes one version and up to six targets: `windows`,
+`macos` or `linux`, each with `amd64` or `arm64`. Windows supports `exe`/`msi`,
+Mac supports `pkg`, and Linux supports `deb`/`rpm`. There is exactly one artifact
+per platform/architecture; a release cannot offer both Linux package formats for
+the same target. The release operator must choose the applicable native package.
+Shell scripts and generic archives are not installer formats. No target is inferred
+or substituted. The exact filename is
 `openuem-agent-<version>-<platform>-<architecture>.<format>`. Paths, URLs, encoded
 separators and alternative filenames are rejected. Versions use three numeric
 components, optionally followed by `-alpha.N`, `-beta.N` or `-rc.N`; numeric
@@ -68,3 +72,11 @@ and per-invitation target binding. Installed-executable admission, native packag
 and the release-signing workflow still require integration. Most test package and
 agent bytes are non-executable fixtures; passing protocol tests is not native
 signing or physical installation acceptance.
+
+Linux target support extends the existing signed schema without changing its
+domain, key roles, byte limits or checkpoint rules. Older clients reject releases
+containing Linux artifacts; upgrade consumers before approving a mixed release.
+Protocol tests authenticate synthetic package and executable bytes in both Linux
+formats and architectures, and reject wrong formats, aliases, ambiguous targets,
+changed bytes and rollback. They do not establish native Linux package-signature
+trust or enable an installer/service that still rejects Linux activation.

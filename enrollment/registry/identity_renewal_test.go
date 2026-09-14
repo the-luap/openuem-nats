@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -25,13 +26,26 @@ type identityRenewalFixture struct {
 
 func newIdentityRenewalFixture(t *testing.T) *identityRenewalFixture {
 	t.Helper()
+	return newTargetIdentityRenewalFixture(t, "windows", "amd64")
+}
+
+func newTargetIdentityRenewalFixture(t *testing.T, platform, architecture string) *identityRenewalFixture {
+	t.Helper()
 	s := testStore(t)
-	_, token := invite(t, s, Scope{TenantID: 1, SiteID: 1}, 1)
+	i, err := s.Invite(t.Context(), InvitationOptions{Scope: Scope{TenantID: 1, SiteID: 1}, Platform: platform, Architecture: architecture, MaxUses: 1, ExpiresAt: time.Now().Add(time.Hour)}, "test-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := i.URL[strings.LastIndex(i.URL, "/")+1:]
 	current, err := enrollment.GenerateKeys()
 	if err != nil {
 		t.Fatal(err)
 	}
-	issued, err := s.Claim(t.Context(), *proof(t, token, current))
+	initial, err := current.Request(token, platform, architecture, "Test endpoint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued, err := s.Claim(t.Context(), *initial)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +84,7 @@ func newIdentityRenewalFixture(t *testing.T) *identityRenewalFixture {
 		t.Fatal(err)
 	}
 	broker, _ := current.Broker.PublicKey()
-	source := enrollment.RenewalSource{DeviceID: issued.DeviceID, TenantID: 1, SiteID: 1, Origin: "https://uem.example.test", Platform: "windows", Architecture: "amd64", BrokerKey: broker, Certificate: certificate}
+	source := enrollment.RenewalSource{DeviceID: issued.DeviceID, TenantID: 1, SiteID: 1, Origin: "https://uem.example.test", Platform: platform, Architecture: architecture, BrokerKey: broker, Certificate: certificate}
 	request, err := enrollment.NewRenewalRequest(source, current, candidate, uuid.NewString(), now)
 	if err != nil {
 		t.Fatal(err)

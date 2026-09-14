@@ -17,6 +17,14 @@ certificate subject/extensions and permitted software from its invitation record
 CSR subject names never grant authority. An idempotent retry may recover a result
 only for the same `KeyBinding` and authorized request target.
 
+Exact supported targets are `windows`, `macos` and `linux`, each with `amd64` or
+`arm64`. Case aliases and other architectures fail. Linux enrollment and renewal
+proofs bind the same independent source/candidate keys and scope as other targets.
+The [registry](registry/README.md) migration preserves existing identities and
+invitations while extending platform admission. Platform-specific recovery and
+software commands retain their own Mac/Windows authorization gates. Linux release
+configuration support does not supply native installer trust or service activation.
+
 Private keys cannot be JSON-serialized. Persist them with the endpoint's protected
 local key storage before requesting issuance, so interrupted enrollment can reuse
 them. Never put a private key or long-lived credential into an installer, manifest,

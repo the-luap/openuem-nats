@@ -275,7 +275,7 @@ func signedBytes(payload []byte) []byte {
 }
 
 func validate(m Manifest, now time.Time, minimumSequence uint64) error {
-	if m.Schema != Schema || m.Sequence == 0 || m.Sequence > math.MaxInt64 || !versionPattern.MatchString(m.Version) || len(m.Artifacts) == 0 || len(m.Artifacts) > 4 || m.PublishedAt.IsZero() || m.ExpiresAt.IsZero() {
+	if m.Schema != Schema || m.Sequence == 0 || m.Sequence > math.MaxInt64 || !versionPattern.MatchString(m.Version) || len(m.Artifacts) == 0 || len(m.Artifacts) > 6 || m.PublishedAt.IsZero() || m.ExpiresAt.IsZero() {
 		return ErrInvalid
 	}
 	if m.Sequence < minimumSequence {
@@ -286,10 +286,10 @@ func validate(m Manifest, now time.Time, minimumSequence uint64) error {
 	}
 	targets := make(map[string]bool)
 	for _, item := range m.Artifacts {
-		if (item.Platform != "windows" && item.Platform != "macos") || (item.Architecture != "amd64" && item.Architecture != "arm64") || item.Size <= 0 || item.Size > MaxPackageSize {
+		if (item.Platform != "windows" && item.Platform != "macos" && item.Platform != "linux") || (item.Architecture != "amd64" && item.Architecture != "arm64") || item.Size <= 0 || item.Size > MaxPackageSize {
 			return ErrInvalid
 		}
-		if (item.Platform == "windows" && item.Format != "exe" && item.Format != "msi") || (item.Platform == "macos" && item.Format != "pkg") {
+		if (item.Platform == "windows" && item.Format != "exe" && item.Format != "msi") || (item.Platform == "macos" && item.Format != "pkg") || (item.Platform == "linux" && item.Format != "deb" && item.Format != "rpm") {
 			return ErrInvalid
 		}
 		want := "openuem-agent-" + m.Version + "-" + item.Platform + "-" + item.Architecture + "." + item.Format

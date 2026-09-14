@@ -1,10 +1,16 @@
 # Signed desktop installation configuration
 
 This package authenticates the configuration accompanying an unchanged signed
-Windows/Mac installer. It complements `enrollment/artifacts`; it does not establish
+Windows/Mac/Linux installer. It complements `enrollment/artifacts`; it does not establish
 trust in a downloaded key, authorize a server origin, install a package or issue
 an identity by itself. The enrollment service and native bootstrap command must
 integrate it with their existing invitation, catalog and protected-state checks.
+
+Linux configuration supports exact `amd64`/`arm64` targets and the selected signed
+`deb` or `rpm` artifact. Configuration and release keys remain independent, and
+download URLs stay bound to the authorized origin, release digest and target.
+Consumers must explicitly integrate native Linux package trust, protected storage
+and service activation; accepting this configuration does not enable them.
 
 A schema-1 configuration binds the expected HTTPS origin, organization/site
 labels and numeric scope, limited invitation, exact platform/architecture,
