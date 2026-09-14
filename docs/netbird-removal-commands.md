@@ -2,9 +2,10 @@
 
 Command version four introduces `uninstall` with an exact inspected native target.
 It is separate from connection, registration and installation grammars. This
-contract and its agent journal admission are implemented; native package removal
-and the reviewed console lifecycle still require their own integration. Merely
-upgrading the codec cannot execute a removal or advertise native ownership.
+contract and its agent journal admission are implemented. The [native macOS owner](https://github.com/the-luap/openuem-agent/blob/aa1262dd95fa086649d7bc3bdee8beb08b0e13ad/docs/netbird-removal-execution.md)
+and [reviewed console lifecycle](https://github.com/the-luap/openuem-console/blob/4d6ca6369a003597e7b602b4b5ea1c1548e1dc74/docs/netbird-removal-ui.md)
+now provide native ownership, execution and scoped review/dispatch/recovery/UI.
+Merely upgrading the codec cannot execute removal or advertise native ownership.
 
 ## Inspected target and authority
 
@@ -85,8 +86,13 @@ cleanup, restart exclusion and permanent withdrawal.
 
 The console connection and installation publishers explicitly reject version-four
 commands. Its existing direct control publisher transports and verifies the new
-read-only inspection grammar; this is not a public removal endpoint. Native
-inspection/mutation/result verification, runtime owner binding, console request
-storage/dispatch/recovery/UI, Linux individual enrollment/publisher trust and real
-package/daemon/device acceptance remain required. No native package was removed
-by these fixtures.
+read-only inspection grammar. A distinct version-four native publisher now serves
+the console's reviewed removal lifecycle. Immutable requests and attempts precede
+delivery; joined workers never resend an admitted command, and exact original
+receipts or reviewed withdrawal/release proofs govern the common device barrier.
+Scoped software rights protect current review, confirmation, twenty-row history,
+queued cancellation and explicit receipt/recovery actions. The full console
+inventory race suite, registered HTTP routes, 2,640 browser cases and Linux ARM64
+builds pass. Retained local staging recovery, Linux individual enrollment/publisher
+trust and real package/daemon/device acceptance remain required. No vendor package
+or enrolled device was removed by these fixtures.
