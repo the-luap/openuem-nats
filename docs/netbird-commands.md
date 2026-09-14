@@ -162,8 +162,9 @@ publisher now follows exact package-aware durable admission, fresh authority and
 preparation checks. A verified completed receipt opens console admission; lost
 results use read-only receipt recovery without redelivery. Separately reviewed
 withdrawal/release now require expiring reviews and exact owned proof before the
-console barrier opens, preserving the uncertain original result. Dispatch and
-lifecycle UI remain integration work. Console
+console barrier opens, preserving the uncertain original result. Automatic
+dispatch now binds the native store to joined inventory workers; device lifecycle
+UI remains integration work. Console
 preparation retains exact attempt/results around one bounded direct RPC after
 current approval and both capability checks. Local removal and Linux publisher
 trust remain separate.
@@ -239,3 +240,10 @@ for [reviewed withdrawal/release](https://github.com/the-luap/openuem-console/bl
 reviews and one immutable attempt per consumed review. Read-only queries recover
 lost replies only with exact owned proof. Another control requires a new explicit
 review; no native command is retried and release is distinct from completion.
+
+[Console automatic dispatch](https://github.com/the-luap/openuem-console/blob/dc77e7b878432e99296b6b5a7ca8c5ff1fffde4e/docs/netbird-installation-dispatch.md) now processes reviewed native requests without holding a database connection
+across preparation or installation. Existing immutable admissions arbitrate
+concurrent workers; only successful retained preparation may resume. Uncertain
+preparation/native attempts never redeliver automatically. Preflight stops retain
+a safe reason and the common barrier until explicit pre-install cancellation.
+The protocol and consumer runtime pin are unchanged.
