@@ -158,8 +158,9 @@ system installer once and require its exact receipt, complete payload hashes and
 protected vendor CLI link before retaining a completed result. Agents without
 that native owner reject new commands before persisting an attempt. The console
 connection/registration publisher still rejects this version; package-aware
-preparation/delivery admission, current approval checks and lifecycle UI remain
-integration work. Local removal and Linux publisher trust remain separate.
+native delivery admission, fresh approval checks and lifecycle UI remain
+integration work. Console preparation now retains exact attempt/results around
+one bounded direct RPC after current approval and both capability checks. Local removal and Linux publisher trust remain separate.
 
 ## Authenticated private package preparation
 
@@ -207,3 +208,14 @@ that its reviewed journal revision is still ready under the journal mutex.
 Completed or uncertain exact replay reads retained evidence without another
 preparation or installer invocation. Cleanup failure retains uncertainty. Native
 receipt and file evidence do not prove daemon connectivity or provider enrollment.
+
+
+[Console preparation admission](https://github.com/the-luap/openuem-console/blob/5be886d170478dd199cee99bb69644e96394ebf6/docs/netbird-console-preparation.md) now stores the exact wire version, certificate,
+digest and issue/expiry times against its immutable installation request and
+encrypted package approval. The attempt and audit commit before one direct RPC;
+no database transaction is held across the download. A correlated source-free
+result is appended afterwards. Missing or invalid responses retain uncertainty,
+and repeats read pending/result evidence without redelivery. Native command
+admission must reconstruct and verify that preparation and recheck current
+approval, scope, recipient and cancellation before its own durable attempt.
+Cancelling the local RPC wait cannot retract preparation already sent to an agent.
