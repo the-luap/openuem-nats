@@ -7,7 +7,7 @@ individual broker policies allow the console to publish it and each endpoint to
 subscribe only to its own device suffix. It does not add permissions or change
 stream definitions.
 
-Every command explicitly includes its version, canonical request UUID, device,
+Connection and registration commands explicitly include their version, canonical request UUID, device,
 organization/site, enrollment mode, certificate hash, reviewed source revision,
 operation, management URL, profile, issue time and expiry. Individual targets
 require a canonical device UUID and certificate digest. Legacy targets have no
@@ -40,7 +40,8 @@ profile; profile switches require a bounded nonempty handle. The management URL
 must satisfy the shared HTTPS policy.
 
 Connection and registration lifetime is at most two minutes. Installation has
-a separate ten-minute upper bound for native execution. `Executable` additionally requires the
+a separate ten-minute upper bound for native execution. `Executable` additionally
+requires the
 exact current local identity, an expiry later than the current time and an issue
 time no more than five seconds ahead of the local clock. Callers must apply that
 check immediately before durable admission, apply the expiry to every execution
