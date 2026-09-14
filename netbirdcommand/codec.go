@@ -65,6 +65,9 @@ func Decode(data []byte) (Command, error) {
 	if len(data) > MaxMessage || json.Unmarshal(data, &header) != nil {
 		return Command{}, ErrInvalid
 	}
+	if header.Version == InstallationVersion {
+		return decodeInstallation(data)
+	}
 	fields := []string{"version", "device_id", "tenant_id", "site_id", "individual", "certificate_hash", "request_id", "revision", "operation", "management_url", "profile", "issued_at", "expires_at"}
 	if header.Version == RegistrationVersion {
 		fields = append(fields, "setup_key")

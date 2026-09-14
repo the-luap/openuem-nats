@@ -65,7 +65,7 @@ func (c ControlRequest) Valid() bool {
 		return false
 	}
 	if c.Version == RecoveryVersion {
-		return (c.Kind == "receipt" || c.Kind == "withdraw") && ValidRequestID(c.ReferenceID) && ValidDigest(c.CommandHash) && ValidDigest(c.Revision) && receiptOperationValid(c.Operation)
+		return (c.Kind == "receipt" || c.Kind == "withdraw") && ValidRequestID(c.ReferenceID) && ValidDigest(c.CommandHash) && ValidDigest(c.Revision) && receiptOperationValid(c.Operation) && (c.Operation != "install" || c.Individual)
 	}
 	if c.Revision != "" || c.Operation != "" {
 		return false
@@ -166,7 +166,7 @@ func (r ControlResponse) Matches(c ControlRequest) bool {
 	case "state", "registration-state":
 		return r.State.Valid() && r.Receipt == (Receipt{}) && r.ReleaseID == ""
 	case "receipt", "release", "withdraw":
-		if r.State != (State{}) || !r.Receipt.Valid() || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash {
+		if r.State != (State{}) || !r.Receipt.Valid() || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash || r.Receipt.Operation == "install" && !c.Individual {
 			return false
 		}
 		if c.Version == RecoveryVersion && (r.Receipt.Revision != c.Revision || r.Receipt.Operation != c.Operation) {

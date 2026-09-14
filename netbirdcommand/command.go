@@ -14,14 +14,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/open-uem/nats/netbirdapi"
+	packageapi "github.com/open-uem/nats/netbirdinstall"
 )
 
 const (
-	Version             = 1
-	RegistrationVersion = 2
-	MaxMessage          = 16 << 10
-	Lifetime            = 2 * time.Minute
-	ClockAllowance      = 5 * time.Second
+	Version              = 1
+	RegistrationVersion  = 2
+	InstallationVersion  = 3
+	MaxMessage           = 16 << 10
+	Lifetime             = 2 * time.Minute
+	InstallationLifetime = 10 * time.Minute
+	ClockAllowance       = 5 * time.Second
 )
 
 var ErrInvalid = errors.New("invalid NetBird command or receipt")
@@ -48,6 +51,8 @@ type Command struct {
 	SetupKey      string    `json:"setup_key,omitempty"`
 	IssuedAt      time.Time `json:"issued_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
+	// Package is serialized only by the explicit version-three wire codec.
+	Package packageapi.Package `json:"-"`
 }
 
 type Receipt struct {
@@ -62,8 +67,19 @@ type Receipt struct {
 
 // Diagnostic formatting never includes the one-off registration credential.
 // Encode is the explicit wire serialization API and does include that field.
-func (c Command) String() string   { return "NetBird command (credential redacted)" }
+func (c Command) String() string   { return "NetBird command (credentials and source redacted)" }
 func (c Command) GoString() string { return c.String() }
+
+type wireCommand Command
+
+// Preserve earlier incidental serialization while refusing to expose or silently
+// drop an installation's private package descriptor. Encode is the wire API.
+func (c Command) MarshalJSON() ([]byte, error) {
+	if c.Version == InstallationVersion || c.Package != (packageapi.Package{}) {
+		return nil, ErrInvalid
+	}
+	return json.Marshal(wireCommand(c))
+}
 
 func ValidRequestID(id string) bool {
 	parsed, err := uuid.Parse(id)
@@ -110,11 +126,27 @@ func operationValid(operation, profile string) bool {
 // Valid checks immutable syntax independently of the clock, so retained records
 // can still be inspected after expiry. It never authorizes execution by itself.
 func (c Command) Valid() bool {
-	operation := c.Version == Version && operationValid(c.Operation, c.Profile) && c.SetupKey == "" || c.Version == RegistrationVersion && c.Operation == "register" && c.Profile == "" && validSetupKey(c.SetupKey)
+	connection := c.Version == Version && operationValid(c.Operation, c.Profile) && c.SetupKey == "" || c.Version == RegistrationVersion && c.Operation == "register" && c.Profile == "" && validSetupKey(c.SetupKey)
+	operation := connection && c.Package == (packageapi.Package{}) && len(c.ManagementURL) <= 2048 && netbirdapi.ValidBase(c.ManagementURL)
+	if c.Version == InstallationVersion {
+		operation = c.Operation == "install" && c.Individual && c.ManagementURL == "" && c.Profile == "" && c.SetupKey == "" && c.Package.Valid() && c.Package.TenantID == c.TenantID
+	}
 	return operation && c.Identity.Valid() && ValidRequestID(c.RequestID) && ValidDigest(c.Revision) &&
-		len(c.ManagementURL) <= 2048 && netbirdapi.ValidBase(c.ManagementURL) &&
 		c.IssuedAt.Year() >= 1970 && c.IssuedAt.Year() <= 9999 && c.ExpiresAt.Year() >= 1970 && c.ExpiresAt.Year() <= 9999 &&
-		c.ExpiresAt.After(c.IssuedAt) && c.ExpiresAt.Sub(c.IssuedAt) <= Lifetime
+		c.ExpiresAt.After(c.IssuedAt) && c.ExpiresAt.Sub(c.IssuedAt) <= OperationLifetime(c.Operation)
+}
+
+// OperationLifetime also validates retained journal timestamps without storing
+// package sources or registration credentials. Unknown operations have no life.
+func OperationLifetime(operation string) time.Duration {
+	switch operation {
+	case "up", "down", "switchprofile", "register":
+		return Lifetime
+	case "install":
+		return InstallationLifetime
+	default:
+		return 0
+	}
 }
 
 func validSetupKey(key string) bool {
@@ -142,7 +174,10 @@ func Encode(c Command) ([]byte, error) {
 	}
 	c.IssuedAt = c.IssuedAt.UTC()
 	c.ExpiresAt = c.ExpiresAt.UTC()
-	data, err := json.Marshal(c)
+	if c.Version == InstallationVersion {
+		return encodeInstallation(c)
+	}
+	data, err := json.Marshal(wireCommand(c))
 	if err != nil || len(data) > MaxMessage {
 		return nil, ErrInvalid
 	}
@@ -183,7 +218,7 @@ func (r Receipt) Valid() bool {
 	if r.Version != Version || !ValidRequestID(r.RequestID) || !ValidDeviceID(r.DeviceID) || !ValidDigest(r.Revision) || !ValidDigest(r.CommandHash) {
 		return false
 	}
-	if !receiptOperationValid(r.Operation) {
+	if !receiptOperationValid(r.Operation) || r.Operation == "install" && !ValidRequestID(r.DeviceID) {
 		return false
 	}
 	switch r.Status {
@@ -207,5 +242,5 @@ func EncodeReceipt(r Receipt) ([]byte, error) {
 }
 
 func receiptOperationValid(operation string) bool {
-	return operation == "up" || operation == "down" || operation == "switchprofile" || operation == "register"
+	return OperationLifetime(operation) > 0
 }

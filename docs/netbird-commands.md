@@ -15,7 +15,9 @@ certificate digest and retain the limitations of shared broker credentials.
 Version 1 admits `up`, `down` and `switchprofile` and its canonical encoding stays
 unchanged. Version 2 exclusively admits `register` with a required, bounded
 `setup_key` and empty profile. It carries only the one-off key, never a provider
-access token. Installation scripts are not part of this protocol.
+access token. Version 3 exclusively admits an individually enrolled Unix
+`install` command with an exact approved package descriptor, as specified below.
+Commands never carry an arbitrary script or executable name.
 
 Before creating a key, registration callers must require a successful correlated
 `registration-state` control query. A normal `state` response does not establish
@@ -37,7 +39,8 @@ invalid profiles; and messages exceeding 16 KiB. Connection commands carry no
 profile; profile switches require a bounded nonempty handle. The management URL
 must satisfy the shared HTTPS policy.
 
-Command lifetime is at most two minutes. `Executable` additionally requires the
+Connection and registration lifetime is at most two minutes. Installation has
+a separate ten-minute upper bound for native execution. `Executable` additionally requires the
 exact current local identity, an expiry later than the current time and an issue
 time no more than five seconds ahead of the local clock. Callers must apply that
 check immediately before durable admission, apply the expiry to every execution
@@ -114,3 +117,43 @@ control response cannot establish withdrawal proof. Current identity, service
 cancellation, ten-second expiry, bounded storage and failed-publication rules
 continue to apply. Provider cleanup and console resolution admission must be
 coordinated separately before further device commands are allowed.
+
+## Exact Unix installation commands
+
+`InstallationVersion` (command version 3) contains the common identity, request
+UUID, reviewed revision, `install` operation, issue/expiry times and one nested
+`netbirdinstall.Package`. The package's organization must equal the recipient's
+organization. The recipient must be individually enrolled with a canonical device
+UUID and current certificate hash; shared credentials are never an installation
+identity. Management URL, profile and setup key fields are forbidden, including
+empty values. Windows installation remains in its separate software protocol.
+
+The nested descriptor is decoded using its own strict bounded codec. Aliases,
+duplicates, missing/null fields, unsupported types and unknown fields are rejected
+at both levels. Its complete source URL, approval UUID, native target/version,
+size and hash enter the canonical command digest. Only explicit `Encode` exposes
+the source: incidental JSON serialization of an installation command fails, and
+diagnostic formatting conceals it. Earlier command bytes and digests are unchanged.
+
+The package must be prepared and verified separately before a fresh installation
+command is admitted. Its ten-minute lifetime bounds native execution; it is not
+a download lease or authorization to install a merely matching hash. Before
+issuing/admitting it, the console and agent must establish current approval and
+revocation state, exact target authority, a matching privately prepared native
+package, current certificate lifetime and the common durable operation barrier.
+No new subject, stream filter, permission or automatic retry is introduced.
+
+Installation receipts retain the version-one metadata shape and include no
+source or package contents. Recovery version 2 can withdraw an unattempted install
+or query its retained receipt under current individual identity. Existing explicit
+release rules apply to uncertain installation attempts. A release does not prove
+installation success or stop an orphaned native process. Unknown operations,
+including `uninstall`, remain invalid until their own exact lifecycle is defined.
+
+The protocol and agent journal support this identity now. The agent's production
+executor has no installation runner and rejects new install commands before
+persisting an attempt. The console connection/registration publisher also rejects
+them; it cannot substitute for a package-aware durable admission path. Ordinary
+or registration journal readiness does not advertise installation capability.
+Authenticated preparation/delivery, console durable admission, native execution,
+verified final state and lifecycle UI remain integration work.

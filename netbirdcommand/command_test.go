@@ -135,6 +135,8 @@ func FuzzDecodeCommand(f *testing.F) {
 	f.Add(data)
 	registration, _ := Encode(registrationCommand())
 	f.Add(registration)
+	installation, _ := Encode(installationCommand())
+	f.Add(installation)
 	f.Add([]byte(`{"version":1}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		c, err := Decode(data)
