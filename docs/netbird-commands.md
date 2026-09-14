@@ -157,10 +157,14 @@ prepared package under atomic journal revision admission. They invoke the fixed
 system installer once and require its exact receipt, complete payload hashes and
 protected vendor CLI link before retaining a completed result. Agents without
 that native owner reject new commands before persisting an attempt. The console
-connection/registration publisher still rejects this version; package-aware
-native delivery admission, fresh approval checks and lifecycle UI remain
-integration work. Console preparation now retains exact attempt/results around
-one bounded direct RPC after current approval and both capability checks. Local removal and Linux publisher trust remain separate.
+connection/registration publisher still rejects this version. A separate native
+publisher now follows exact package-aware durable admission, fresh authority and
+preparation checks. Only a verified completed receipt opens console admission;
+lost results use read-only receipt recovery without redelivery. Explicit uncertain
+withdrawal/release, dispatch and lifecycle UI remain integration work. Console
+preparation retains exact attempt/results around one bounded direct RPC after
+current approval and both capability checks. Local removal and Linux publisher
+trust remain separate.
 
 ## Authenticated private package preparation
 
@@ -219,3 +223,14 @@ and repeats read pending/result evidence without redelivery. Native command
 admission must reconstruct and verify that preparation and recheck current
 approval, scope, recipient and cancellation before its own durable attempt.
 Cancelling the local RPC wait cannot retract preparation already sent to an agent.
+
+
+[Console native delivery](https://github.com/the-luap/openuem-console/blob/3597328d39f43894b2ad556246ad29532a6345d6/docs/netbird-installation-delivery.md) now reconstructs and verifies the exact retained
+preparation, rechecks current authority and persists one fresh version-three
+attempt before delivery. Command execution has its own ten-minute maximum and
+certificate bound. Native attempts exclude cancellation permanently. A separate
+completed receipt opens the common device barrier; the request UUID remains
+reserved. Version-two read-only receipt queries under the current certificate
+can recover completion after response loss without rewriting the original
+uncertain result. Missing, withdrawn or released observations do not substitute
+for the still-separate reviewed withdrawal/release workflow.
