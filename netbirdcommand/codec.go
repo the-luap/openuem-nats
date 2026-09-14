@@ -65,6 +65,9 @@ func Decode(data []byte) (Command, error) {
 	if len(data) > MaxMessage || json.Unmarshal(data, &header) != nil {
 		return Command{}, ErrInvalid
 	}
+	if header.Version == RemovalVersion {
+		return decodeRemoval(data)
+	}
 	if header.Version == InstallationVersion {
 		return decodeInstallation(data)
 	}

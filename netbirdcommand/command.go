@@ -53,6 +53,8 @@ type Command struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 	// Package is serialized only by the explicit version-three wire codec.
 	Package packageapi.Package `json:"-"`
+	// Removal is serialized only by the explicit version-four wire codec.
+	Removal packageapi.Removal `json:"-"`
 }
 
 type Receipt struct {
@@ -73,9 +75,9 @@ func (c Command) GoString() string { return c.String() }
 type wireCommand Command
 
 // Preserve earlier incidental serialization while refusing to expose or silently
-// drop an installation's private package descriptor. Encode is the wire API.
+// drop a native package operation descriptor. Encode is the wire API.
 func (c Command) MarshalJSON() ([]byte, error) {
-	if c.Version == InstallationVersion || c.Package != (packageapi.Package{}) {
+	if c.Version == InstallationVersion || c.Version == RemovalVersion || c.Package != (packageapi.Package{}) || c.Removal != (packageapi.Removal{}) {
 		return nil, ErrInvalid
 	}
 	return json.Marshal(wireCommand(c))
@@ -127,9 +129,12 @@ func operationValid(operation, profile string) bool {
 // can still be inspected after expiry. It never authorizes execution by itself.
 func (c Command) Valid() bool {
 	connection := c.Version == Version && operationValid(c.Operation, c.Profile) && c.SetupKey == "" || c.Version == RegistrationVersion && c.Operation == "register" && c.Profile == "" && validSetupKey(c.SetupKey)
-	operation := connection && c.Package == (packageapi.Package{}) && len(c.ManagementURL) <= 2048 && netbirdapi.ValidBase(c.ManagementURL)
+	operation := connection && c.Package == (packageapi.Package{}) && c.Removal == (packageapi.Removal{}) && len(c.ManagementURL) <= 2048 && netbirdapi.ValidBase(c.ManagementURL)
 	if c.Version == InstallationVersion {
-		operation = c.Operation == "install" && c.Individual && c.ManagementURL == "" && c.Profile == "" && c.SetupKey == "" && c.Package.Valid() && c.Package.TenantID == c.TenantID
+		operation = c.Operation == "install" && c.Removal == (packageapi.Removal{}) && c.Individual && c.ManagementURL == "" && c.Profile == "" && c.SetupKey == "" && c.Package.Valid() && c.Package.TenantID == c.TenantID
+	}
+	if c.Version == RemovalVersion {
+		operation = c.Operation == "uninstall" && c.Individual && c.ManagementURL == "" && c.Profile == "" && c.SetupKey == "" && c.Package == (packageapi.Package{}) && c.Removal.Valid()
 	}
 	return operation && c.Identity.Valid() && ValidRequestID(c.RequestID) && ValidDigest(c.Revision) &&
 		c.IssuedAt.Year() >= 1970 && c.IssuedAt.Year() <= 9999 && c.ExpiresAt.Year() >= 1970 && c.ExpiresAt.Year() <= 9999 &&
@@ -144,6 +149,8 @@ func OperationLifetime(operation string) time.Duration {
 		return Lifetime
 	case "install":
 		return InstallationLifetime
+	case "uninstall":
+		return RemovalLifetime
 	default:
 		return 0
 	}
@@ -176,6 +183,9 @@ func Encode(c Command) ([]byte, error) {
 	c.ExpiresAt = c.ExpiresAt.UTC()
 	if c.Version == InstallationVersion {
 		return encodeInstallation(c)
+	}
+	if c.Version == RemovalVersion {
+		return encodeRemoval(c)
 	}
 	data, err := json.Marshal(wireCommand(c))
 	if err != nil || len(data) > MaxMessage {
@@ -218,7 +228,7 @@ func (r Receipt) Valid() bool {
 	if r.Version != Version || !ValidRequestID(r.RequestID) || !ValidDeviceID(r.DeviceID) || !ValidDigest(r.Revision) || !ValidDigest(r.CommandHash) {
 		return false
 	}
-	if !receiptOperationValid(r.Operation) || r.Operation == "install" && !ValidRequestID(r.DeviceID) {
+	if !receiptOperationValid(r.Operation) || RequiresIndividualIdentity(r.Operation) && !ValidRequestID(r.DeviceID) {
 		return false
 	}
 	switch r.Status {

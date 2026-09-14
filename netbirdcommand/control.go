@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"time"
+
+	packageapi "github.com/open-uem/nats/netbirdinstall"
 )
 
 // RecoveryVersion adds explicit withdrawal of an unattempted command. Version
@@ -61,11 +63,18 @@ type ControlRequest struct {
 }
 
 func (c ControlRequest) Valid() bool {
-	if (c.Version != Version && c.Version != RecoveryVersion) || !c.Identity.Valid() || !ValidRequestID(c.RequestID) || c.IssuedAt.Year() < 1970 || c.IssuedAt.Year() > 9999 || c.ExpiresAt.Year() < 1970 || c.ExpiresAt.Year() > 9999 || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > ControlLifetime {
+	lifetime := ControlLifetime
+	if c.Version == RemovalInspectionVersion {
+		lifetime = RemovalInspectionLifetime
+	}
+	if (c.Version != Version && c.Version != RecoveryVersion && c.Version != RemovalInspectionVersion) || !c.Identity.Valid() || !ValidRequestID(c.RequestID) || c.IssuedAt.Year() < 1970 || c.IssuedAt.Year() > 9999 || c.ExpiresAt.Year() < 1970 || c.ExpiresAt.Year() > 9999 || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > lifetime {
 		return false
 	}
+	if c.Version == RemovalInspectionVersion {
+		return c.Kind == "removal-state" && c.Individual && c.ReferenceID == "" && c.CommandHash == "" && c.Revision == "" && c.Operation == ""
+	}
 	if c.Version == RecoveryVersion {
-		return (c.Kind == "receipt" || c.Kind == "withdraw") && ValidRequestID(c.ReferenceID) && ValidDigest(c.CommandHash) && ValidDigest(c.Revision) && receiptOperationValid(c.Operation) && (c.Operation != "install" || c.Individual)
+		return (c.Kind == "receipt" || c.Kind == "withdraw") && ValidRequestID(c.ReferenceID) && ValidDigest(c.CommandHash) && ValidDigest(c.Revision) && receiptOperationValid(c.Operation) && (!RequiresIndividualIdentity(c.Operation) || c.Individual)
 	}
 	if c.Revision != "" || c.Operation != "" {
 		return false
@@ -141,6 +150,8 @@ type ControlResponse struct {
 	State       State   `json:"state"`
 	Receipt     Receipt `json:"receipt"`
 	ReleaseID   string  `json:"release_id"`
+	// Only version-three inspection responses include native removal evidence.
+	Removal packageapi.Removal `json:"-"`
 }
 
 func ControlResponseFor(c ControlRequest, outcome string) (ControlResponse, error) {
@@ -156,6 +167,12 @@ func (r ControlResponse) Matches(c ControlRequest) bool {
 	if err != nil || r.Version != c.Version || r.Identity != c.Identity || r.RequestID != c.RequestID || r.RequestHash != hash || r.Kind != c.Kind {
 		return false
 	}
+	if c.Version == RemovalInspectionVersion {
+		return r.removalStateMatches()
+	}
+	if r.Removal != (packageapi.Removal{}) {
+		return false
+	}
 	if r.Outcome != "ok" {
 		switch r.Outcome {
 		case "missing", "blocked", "conflict", "unavailable":
@@ -168,7 +185,7 @@ func (r ControlResponse) Matches(c ControlRequest) bool {
 	case "state", "registration-state", "preparation-state", "installation-state":
 		return r.State.Valid() && r.Receipt == (Receipt{}) && r.ReleaseID == ""
 	case "receipt", "release", "withdraw":
-		if r.State != (State{}) || !r.Receipt.Valid() || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash || r.Receipt.Operation == "install" && !c.Individual {
+		if r.State != (State{}) || !r.Receipt.Valid() || r.Receipt.DeviceID != c.DeviceID || r.Receipt.RequestID != c.ReferenceID || r.Receipt.CommandHash != c.CommandHash || RequiresIndividualIdentity(r.Receipt.Operation) && !c.Individual {
 			return false
 		}
 		if c.Version == RecoveryVersion && (r.Receipt.Revision != c.Revision || r.Receipt.Operation != c.Operation) {
@@ -200,10 +217,16 @@ func EncodeControlResponse(c ControlRequest, r ControlResponse) ([]byte, error) 
 	if !r.Matches(c) {
 		return nil, ErrInvalid
 	}
+	if c.Version == RemovalInspectionVersion {
+		return encodeRemovalState(r)
+	}
 	return json.Marshal(r)
 }
 
 func DecodeControlResponse(data []byte, c ControlRequest) (ControlResponse, error) {
+	if c.Version == RemovalInspectionVersion {
+		return decodeRemovalState(data, c)
+	}
 	var r ControlResponse
 	if decode(data, []string{"version", "device_id", "tenant_id", "site_id", "individual", "certificate_hash", "request_id", "request_hash", "kind", "outcome", "state", "receipt", "release_id"}, &r) != nil {
 		return ControlResponse{}, ErrInvalid
@@ -218,4 +241,15 @@ func DecodeControlResponse(data []byte, c ControlRequest) (ControlResponse, erro
 		return ControlResponse{}, ErrInvalid
 	}
 	return r, nil
+}
+
+// Incidental serialization must not silently omit inspection evidence. Existing
+// control grammars retain their prior wire shape; use EncodeControlResponse.
+type wireControlResponse ControlResponse
+
+func (r ControlResponse) MarshalJSON() ([]byte, error) {
+	if r.Version == RemovalInspectionVersion || r.Removal != (packageapi.Removal{}) {
+		return nil, ErrInvalid
+	}
+	return json.Marshal(wireControlResponse(r))
 }

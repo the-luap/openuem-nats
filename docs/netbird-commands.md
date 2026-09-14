@@ -149,7 +149,9 @@ source or package contents. Recovery version 2 can withdraw an unattempted insta
 or query its retained receipt under current individual identity. Existing explicit
 release rules apply to uncertain installation attempts. A release does not prove
 installation success or stop an orphaned native process. Unknown operations,
-including `uninstall`, remain invalid until their own exact lifecycle is defined.
+remain invalid in the earlier command grammars. Version four now defines
+[exact native removal intent](netbird-removal-commands.md); its native execution
+and console lifecycle remain separate integration work.
 
 The protocol and agent journal support this identity. Individually enrolled,
 privileged macOS agents with native ACL support can now consume a retained
@@ -256,3 +258,10 @@ and recovery reconciliation do not send another native command. All 90 new and
 2,562 total browser cases pass, along with complete console inventory/audit/view
 race suites, real registered HTTP routes and the Linux console build. This UI
 integration changes no wire grammar, agent consumer or runtime dependency pin.
+
+[Native removal command and inspection](netbird-removal-commands.md) now bind a
+source-free current-state descriptor to version-four `uninstall` and a separate
+version-three read-only inspection response. The agent requires its own native
+owner and inspected journal revision before admission, retains uncertainty and
+withdrawal under the common barrier, and rejects new removal without that owner.
+Existing connection/installation publishers cannot deliver this new family.
