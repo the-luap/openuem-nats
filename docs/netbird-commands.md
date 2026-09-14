@@ -151,14 +151,15 @@ release rules apply to uncertain installation attempts. A release does not prove
 installation success or stop an orphaned native process. Unknown operations,
 including `uninstall`, remain invalid until their own exact lifecycle is defined.
 
-The protocol and agent journal support this identity now. The agent's production
-executor has no installation runner and rejects new install commands before
-persisting an attempt. The console connection/registration publisher also rejects
-them; it cannot substitute for a package-aware durable admission path. Ordinary
-or registration journal readiness does not advertise installation capability.
-The agent now exposes the authenticated preparation protocol below. Console
-preparation/delivery admission, native execution, verified final state and
-lifecycle UI remain integration work.
+The protocol and agent journal support this identity. Individually enrolled,
+privileged macOS agents with native ACL support can now consume a retained
+prepared package under atomic journal revision admission. They invoke the fixed
+system installer once and require its exact receipt, complete payload hashes and
+protected vendor CLI link before retaining a completed result. Agents without
+that native owner reject new commands before persisting an attempt. The console
+connection/registration publisher still rejects this version; package-aware
+preparation/delivery admission, current approval checks and lifecycle UI remain
+integration work. Local removal and Linux publisher trust remain separate.
 
 ## Authenticated private package preparation
 
@@ -189,3 +190,20 @@ added. The agent serializes downloads with managed commands and rechecks journal
 readiness after inspection. The console must separately retain preparation intent,
 authenticate current approval and recipient, and recheck them before fresh native
 installation admission. Preparation readiness never advertises an installer.
+
+## Native installation readiness
+
+The individual-only version-one `installation-state` control discovers a live
+native installer and its common journal state. Its response must match this exact
+kind: ordinary, registration and preparation readiness cannot substitute for it.
+A bare journal or a service without a configured native installer responds without
+installation readiness. The request adds no broker permission or stream filter.
+
+Readiness is not package admission. A version-three command must consume the same
+live preparation UUID, reviewed revision, current individual certificate and exact
+package. Its issue time cannot precede that preparation. The service owns the
+artifact through native execution and joined cleanup; journal admission checks
+that its reviewed journal revision is still ready under the journal mutex.
+Completed or uncertain exact replay reads retained evidence without another
+preparation or installer invocation. Cleanup failure retains uncertainty. Native
+receipt and file evidence do not prove daemon connectivity or provider enrollment.

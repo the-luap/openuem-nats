@@ -156,3 +156,33 @@ func FuzzPreparationDecode(f *testing.F) {
 		}
 	})
 }
+
+func TestInstallationReadinessRequiresItsOwnIndividualCapability(t *testing.T) {
+	p := preparationRequest()
+	c := ControlRequest{Version: Version, Identity: p.Identity, RequestID: p.RequestID, Kind: "installation-state", IssuedAt: p.IssuedAt, ExpiresAt: p.IssuedAt.Add(ControlLifetime)}
+	data, err := EncodeControl(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := DecodeControl(data); err != nil || got != c {
+		t.Fatal("installation capability round trip failed", err)
+	}
+	r, _ := ControlResponseFor(c, "ok")
+	r.State = State{Status: "ready", Revision: p.JournalRevision, Remaining: 1}
+	if data, err := EncodeControlResponse(c, r); err != nil {
+		t.Fatal(err)
+	} else if got, err := DecodeControlResponse(data, c); err != nil || got != r {
+		t.Fatal("capability response correlation failed", err)
+	}
+	for _, kind := range []string{"state", "registration-state", "preparation-state"} {
+		other := c
+		other.Kind = kind
+		if r.Matches(other) {
+			t.Fatal("another capability substituted for installation readiness")
+		}
+	}
+	c.Individual, c.CertificateHash = false, ""
+	if c.Valid() {
+		t.Fatal("shared identity advertised native installation")
+	}
+}
