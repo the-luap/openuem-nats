@@ -57,6 +57,8 @@ type Command struct {
 	Removal packageapi.Removal `json:"-"`
 	// Recovery is a separate version-five intent, never an original-command replay.
 	RemovalRecovery RemovalRecovery `json:"-"`
+	// Absence is an independent read-only version-six verification.
+	RemovalAbsence RemovalAbsence `json:"-"`
 }
 
 type Receipt struct {
@@ -79,7 +81,7 @@ type wireCommand Command
 // Preserve earlier incidental serialization while refusing to expose or silently
 // drop a native package operation descriptor. Encode is the wire API.
 func (c Command) MarshalJSON() ([]byte, error) {
-	if c.Version == InstallationVersion || c.Version == RemovalVersion || c.Version == RemovalRecoveryVersion || c.Package != (packageapi.Package{}) || c.Removal != (packageapi.Removal{}) || c.RemovalRecovery != (RemovalRecovery{}) {
+	if c.Version == RemovalAbsenceVersion || c.RemovalAbsence != (RemovalAbsence{}) || c.Version == InstallationVersion || c.Version == RemovalVersion || c.Version == RemovalRecoveryVersion || c.Package != (packageapi.Package{}) || c.Removal != (packageapi.Removal{}) || c.RemovalRecovery != (RemovalRecovery{}) {
 		return nil, ErrInvalid
 	}
 	return json.Marshal(wireCommand(c))
@@ -143,6 +145,11 @@ func (c Command) Valid() bool {
 	} else if c.RemovalRecovery != (RemovalRecovery{}) {
 		operation = false
 	}
+	if c.Version == RemovalAbsenceVersion {
+		operation = c.Operation == "verify-removal-absence" && c.Individual && c.ManagementURL == "" && c.Profile == "" && c.SetupKey == "" && c.Package == (packageapi.Package{}) && c.Removal == (packageapi.Removal{}) && c.RemovalRecovery == (RemovalRecovery{}) && c.RemovalAbsence.Valid() && c.RequestID != c.RemovalAbsence.Original.RequestID && c.RequestID != c.RemovalAbsence.Original.ReleaseID
+	} else if c.RemovalAbsence != (RemovalAbsence{}) {
+		operation = false
+	}
 	return operation && c.Identity.Valid() && ValidRequestID(c.RequestID) && ValidDigest(c.Revision) &&
 		c.IssuedAt.Year() >= 1970 && c.IssuedAt.Year() <= 9999 && c.ExpiresAt.Year() >= 1970 && c.ExpiresAt.Year() <= 9999 &&
 		c.ExpiresAt.After(c.IssuedAt) && c.ExpiresAt.Sub(c.IssuedAt) <= OperationLifetime(c.Operation)
@@ -160,6 +167,8 @@ func OperationLifetime(operation string) time.Duration {
 		return RemovalLifetime
 	case "recover-removal":
 		return RemovalRecoveryLifetime
+	case "verify-removal-absence":
+		return RemovalAbsenceLifetime
 	default:
 		return 0
 	}
@@ -198,6 +207,9 @@ func Encode(c Command) ([]byte, error) {
 	}
 	if c.Version == RemovalRecoveryVersion {
 		return encodeRemovalRecoveryCommand(c)
+	}
+	if c.Version == RemovalAbsenceVersion {
+		return encodeRemovalAbsenceCommand(c)
 	}
 	data, err := json.Marshal(wireCommand(c))
 	if err != nil || len(data) > MaxMessage {

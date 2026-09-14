@@ -62,6 +62,8 @@ type ControlRequest struct {
 	Operation   string    `json:"operation,omitempty"`
 	// Only version-four native recovery inspection carries this reference.
 	RemovalRecoveryOriginal RemovalRecoveryReference `json:"-"`
+	// Only version-five inspection carries a descriptor-free original reference.
+	RemovalAbsenceOriginal RemovalAbsenceReference `json:"-"`
 }
 
 func (c ControlRequest) Valid() bool {
@@ -72,7 +74,16 @@ func (c ControlRequest) Valid() bool {
 	if c.Version == RemovalRecoveryInspectionVersion {
 		lifetime = RemovalRecoveryInspectionLifetime
 	}
-	if (c.Version != Version && c.Version != RecoveryVersion && c.Version != RemovalInspectionVersion && c.Version != RemovalRecoveryInspectionVersion) || !c.Identity.Valid() || !ValidRequestID(c.RequestID) || c.IssuedAt.Year() < 1970 || c.IssuedAt.Year() > 9999 || c.ExpiresAt.Year() < 1970 || c.ExpiresAt.Year() > 9999 || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > lifetime {
+	if c.Version == RemovalAbsenceInspectionVersion {
+		lifetime = RemovalAbsenceInspectionLifetime
+	}
+	if (c.Version != Version && c.Version != RecoveryVersion && c.Version != RemovalInspectionVersion && c.Version != RemovalRecoveryInspectionVersion && c.Version != RemovalAbsenceInspectionVersion) || !c.Identity.Valid() || !ValidRequestID(c.RequestID) || c.IssuedAt.Year() < 1970 || c.IssuedAt.Year() > 9999 || c.ExpiresAt.Year() < 1970 || c.ExpiresAt.Year() > 9999 || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > lifetime {
+		return false
+	}
+	if c.Version == RemovalAbsenceInspectionVersion {
+		return c.Kind == "removal-absence-state" && c.Individual && c.ReferenceID == "" && c.CommandHash == "" && c.Revision == "" && c.Operation == "" && c.RemovalRecoveryOriginal == (RemovalRecoveryReference{}) && c.RemovalAbsenceOriginal.Valid()
+	}
+	if c.RemovalAbsenceOriginal != (RemovalAbsenceReference{}) {
 		return false
 	}
 	if c.Version == RemovalRecoveryInspectionVersion {
@@ -112,6 +123,9 @@ func EncodeControl(c ControlRequest) ([]byte, error) {
 	}
 	c.IssuedAt = c.IssuedAt.UTC()
 	c.ExpiresAt = c.ExpiresAt.UTC()
+	if c.Version == RemovalAbsenceInspectionVersion {
+		return encodeRemovalAbsenceInspection(c)
+	}
 	if c.Version == RemovalRecoveryInspectionVersion {
 		return encodeRemovalRecoveryInspection(c)
 	}
@@ -125,6 +139,9 @@ func DecodeControl(data []byte) (ControlRequest, error) {
 	}
 	if len(data) > MaxMessage || json.Unmarshal(data, &header) != nil {
 		return ControlRequest{}, ErrInvalid
+	}
+	if header.Version == RemovalAbsenceInspectionVersion {
+		return decodeRemovalAbsenceInspection(data)
 	}
 	if header.Version == RemovalRecoveryInspectionVersion {
 		return decodeRemovalRecoveryInspection(data)
@@ -170,6 +187,7 @@ type ControlResponse struct {
 	// Only version-three inspection responses include native removal evidence.
 	Removal         packageapi.Removal `json:"-"`
 	RemovalRecovery RemovalRecovery    `json:"-"`
+	RemovalAbsence  RemovalAbsence     `json:"-"`
 }
 
 func ControlResponseFor(c ControlRequest, outcome string) (ControlResponse, error) {
@@ -183,6 +201,12 @@ func ControlResponseFor(c ControlRequest, outcome string) (ControlResponse, erro
 func (r ControlResponse) Matches(c ControlRequest) bool {
 	hash, err := c.Digest()
 	if err != nil || r.Version != c.Version || r.Identity != c.Identity || r.RequestID != c.RequestID || r.RequestHash != hash || r.Kind != c.Kind {
+		return false
+	}
+	if c.Version == RemovalAbsenceInspectionVersion {
+		return r.removalAbsenceStateMatches(c)
+	}
+	if r.RemovalAbsence != (RemovalAbsence{}) {
 		return false
 	}
 	if c.Version == RemovalRecoveryInspectionVersion {
@@ -241,6 +265,9 @@ func EncodeControlResponse(c ControlRequest, r ControlResponse) ([]byte, error) 
 	if !r.Matches(c) {
 		return nil, ErrInvalid
 	}
+	if c.Version == RemovalAbsenceInspectionVersion {
+		return encodeRemovalAbsenceState(r)
+	}
 	if c.Version == RemovalRecoveryInspectionVersion {
 		return encodeRemovalRecoveryState(r)
 	}
@@ -251,6 +278,9 @@ func EncodeControlResponse(c ControlRequest, r ControlResponse) ([]byte, error) 
 }
 
 func DecodeControlResponse(data []byte, c ControlRequest) (ControlResponse, error) {
+	if c.Version == RemovalAbsenceInspectionVersion {
+		return decodeRemovalAbsenceState(data, c)
+	}
 	if c.Version == RemovalRecoveryInspectionVersion {
 		return decodeRemovalRecoveryState(data, c)
 	}
@@ -278,7 +308,7 @@ func DecodeControlResponse(data []byte, c ControlRequest) (ControlResponse, erro
 type wireControlResponse ControlResponse
 
 func (r ControlResponse) MarshalJSON() ([]byte, error) {
-	if r.Version == RemovalInspectionVersion || r.Version == RemovalRecoveryInspectionVersion || r.Removal != (packageapi.Removal{}) || r.RemovalRecovery != (RemovalRecovery{}) {
+	if r.Version == RemovalAbsenceInspectionVersion || r.RemovalAbsence != (RemovalAbsence{}) || r.Version == RemovalInspectionVersion || r.Version == RemovalRecoveryInspectionVersion || r.Removal != (packageapi.Removal{}) || r.RemovalRecovery != (RemovalRecovery{}) {
 		return nil, ErrInvalid
 	}
 	return json.Marshal(wireControlResponse(r))
@@ -289,7 +319,7 @@ type wireControlRequest ControlRequest
 // Native recovery references require the explicit version-four wire codec.
 // Existing control bytes and their incidental serialization stay unchanged.
 func (c ControlRequest) MarshalJSON() ([]byte, error) {
-	if c.Version == RemovalRecoveryInspectionVersion || c.RemovalRecoveryOriginal != (RemovalRecoveryReference{}) {
+	if c.Version == RemovalAbsenceInspectionVersion || c.RemovalAbsenceOriginal != (RemovalAbsenceReference{}) || c.Version == RemovalRecoveryInspectionVersion || c.RemovalRecoveryOriginal != (RemovalRecoveryReference{}) {
 		return nil, ErrInvalid
 	}
 	return json.Marshal(wireControlRequest(c))
