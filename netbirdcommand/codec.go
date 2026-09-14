@@ -68,6 +68,9 @@ func Decode(data []byte) (Command, error) {
 	if header.Version == RemovalVersion {
 		return decodeRemoval(data)
 	}
+	if header.Version == RemovalRecoveryVersion {
+		return decodeRemovalRecoveryCommand(data)
+	}
 	if header.Version == InstallationVersion {
 		return decodeInstallation(data)
 	}

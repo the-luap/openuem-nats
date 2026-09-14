@@ -54,5 +54,5 @@ func decodeRemoval(data []byte) (Command, error) {
 // RequiresIndividualIdentity applies to both execution and retained recovery
 // evidence. A legacy journal or receipt must never acquire native package rights.
 func RequiresIndividualIdentity(operation string) bool {
-	return operation == "install" || operation == "uninstall"
+	return operation == "install" || operation == "uninstall" || operation == "recover-removal"
 }
